@@ -1,0 +1,158 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
+
+class VideoCallScreen extends StatefulWidget {
+  @override
+  _VideoCallScreenState createState() => _VideoCallScreenState();
+}
+
+class _VideoCallScreenState extends State<VideoCallScreen> {
+  late IO.Socket socket;
+  RTCPeerConnection? _peerConnection;
+  MediaStream? _localStream;
+  MediaStream? _remoteStream;
+
+  final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
+  final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
+
+  @override
+  void initState() {
+    super.initState();
+    _localRenderer.initialize();
+    _remoteRenderer.initialize();
+    _initializeSocket();
+    _startLocalStream();
+  }
+
+  @override
+  void dispose() {
+    _localRenderer.dispose();
+    _remoteRenderer.dispose();
+    _localStream?.dispose();
+    _peerConnection?.close();
+    socket.disconnect();
+    super.dispose();
+  }
+
+  Future<void> _initializeSocket() async {
+    socket = IO.io(
+      'http://your-backend-server-url', // Replace with your backend URL
+      IO.OptionBuilder().setTransports(['websocket']).build(),
+    );
+
+    socket.on('connect', (_) {
+      print('Connected to signaling server');
+      socket.emit('join_room', 'roomId'); // Replace 'roomId' with a unique room ID
+    });
+
+    socket.on('offer', (data) async {
+      await _handleOffer(data);
+    });
+
+    socket.on('answer', (data) async {
+      await _peerConnection?.setRemoteDescription(
+        RTCSessionDescription(data['sdp'], data['type']),
+      );
+    });
+
+    socket.on('ice_candidate', (data) async {
+      await _peerConnection?.addCandidate(
+        RTCIceCandidate(data['candidate'], data['sdpMid'], data['sdpMLineIndex']),
+      );
+    });
+  }
+
+  Future<void> _startLocalStream() async {
+    _localStream = await navigator.mediaDevices.getUserMedia({
+      'video': true,
+      'audio': true,
+    });
+
+    _localRenderer.srcObject = _localStream;
+    setState(() {});
+  }
+
+  Future<void> _createPeerConnection() async {
+    final configuration = {
+      'iceServers': [
+        {'urls': 'stun:stun.l.google.com:19302'},
+      ],
+    };
+
+    _peerConnection = await createPeerConnection(configuration);
+
+    _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
+      socket.emit('ice_candidate', {
+        'candidate': candidate.candidate,
+        'sdpMid': candidate.sdpMid,
+        'sdpMLineIndex': candidate.sdpMLineIndex,
+      });
+    };
+
+    _peerConnection!.onTrack = (RTCTrackEvent event) {
+      if (event.streams.isNotEmpty) {
+        _remoteStream = event.streams[0];
+        _remoteRenderer.srcObject = _remoteStream;
+      }
+    };
+
+    _localStream!.getTracks().forEach((track) {
+      _peerConnection!.addTrack(track, _localStream!);
+    });
+  }
+
+  Future<void> _handleOffer(dynamic data) async {
+    await _createPeerConnection();
+    await _peerConnection?.setRemoteDescription(
+      RTCSessionDescription(data['sdp'], data['type']),
+    );
+
+    final answer = await _peerConnection!.createAnswer();
+    await _peerConnection!.setLocalDescription(answer);
+
+    socket.emit('answer', {
+      'sdp': answer.sdp,
+      'type': answer.type,
+    });
+  }
+
+  Future<void> _makeOffer() async {
+    await _createPeerConnection();
+    final offer = await _peerConnection!.createOffer();
+    await _peerConnection!.setLocalDescription(offer);
+
+    socket.emit('offer', {
+      'sdp': offer.sdp,
+      'type': offer.type,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Video Call'),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: RTCVideoView(_localRenderer),
+          ),
+          Expanded(
+            child: RTCVideoView(_remoteRenderer),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ElevatedButton(
+                onPressed: _makeOffer,
+                child: Text('Call'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
