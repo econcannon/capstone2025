@@ -12,10 +12,10 @@ def display_fen_as_board(fen):
     board_str = str(board)  # Get a string representation of the board
     print(board_str)
 
-async def create_game():
-    conn = http.client.HTTPSConnection(BASE_URL)
+async def create_game(conn, token):
     headers = {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "authorization": token
     }
     conn.request("POST", f"/create?playerID={player_id}&ai={True}&depth=1", body=None, headers=headers)
     response = conn.getresponse()
@@ -122,9 +122,21 @@ async def handle_reconnect():
 
 async def main():
     choice = input("Create (1) or Join (2) a game? (1/2): ")
-    
+    player_id = "EricC"
+    password = "Fire1776"
+    endpoint = f"/player/login?playerID={player_id}&password={password}"
+
+    conn = http.client.HTTPSConnection(BASE_URL)
+
+    conn.request("GET", endpoint, headers={"Content-Type": "application/json"}
+)
+    response = conn.getresponse()
+    token = json.loads(response.read().decode()).get("token")
+    if response.status == 200:
+        print(f"Welcome {player_id}!")
+
     if choice == "1":
-        game_id = await create_game()
+        game_id = await create_game(conn, token)
     elif choice == "2":
         game_id = await join_game()
     else:
@@ -132,8 +144,8 @@ async def main():
         return
 
     URL = f"wss://{BASE_URL}/connect?gameID={game_id}&playerID={player_id}"
-    
-    async with websockets.connect(URL) as websocket:
+    token_header = {"authorization": token}
+    async with websockets.connect(URL, additional_headers=token_header) as websocket:
         print(f"Connected to game {game_id} as {player_id}")
         await play_game(websocket)
 
