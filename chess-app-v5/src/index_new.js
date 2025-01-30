@@ -289,7 +289,6 @@ export class ChessGame extends DurableObject {
 
 
 
-
     // Handle WebSocket closure
     webSocketClose(ws) {
         const { playerID } = ws.deserializeAttachment();
@@ -332,7 +331,6 @@ export default {
 
 async function handleGameCreation(playerID, url, request, GAME_ROOM, DB) {
     if (!playerID) return createResponse({message_type: "error", error: "Player ID required." }, 400);
-                
     if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
 
     const max = 10000;
