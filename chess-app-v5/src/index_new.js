@@ -333,10 +333,10 @@ async function handleGameCreation(playerID, url, request, GAME_ROOM, DB) {
     if (!playerID) return createResponse({message_type: "error", error: "Player ID required." }, 400);
     if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
 
-    const max = 10000;
-    const min = 1;
+    const max = 999999999;
+    const min = 0;
     const gameString = generate(3).join("-") + String(Math.floor(Math.random() * (max - min) + min));
-    const gameRoomID = GAME_ROOM.idFromString(gameString);
+    const gameRoomID = GAME_ROOM.idFromName(gameString);
     const gameRoom = GAME_ROOM.get(gameRoomID);
     const success = await insertNewGame(playerID, gameRoomID, DB);
     let ai = false;
@@ -354,7 +354,7 @@ async function handleGameCreation(playerID, url, request, GAME_ROOM, DB) {
 
 
 async function handleConnect(url, request, GAME_ROOM) {
-    const gameID = GAME_ROOM.idFromString(url.searchParams.get("gameID"));
+    const gameID = GAME_ROOM.idFromName(url.searchParams.get("gameID"));
     const playerID = url.searchParams.get("playerID");
 
     if (!gameID || !playerID) {
@@ -362,8 +362,7 @@ async function handleConnect(url, request, GAME_ROOM) {
     }
 
     // Retrieve the existing game Durable Object by ID
-    const gameRoomId = GAME_ROOM.idFromString(gameID);
-    const gameRoom = GAME_ROOM.get(gameRoomId);
+    const gameRoom = GAME_ROOM.get(gameID);
 
     return gameRoom.fetch(request);
 }
@@ -407,7 +406,7 @@ async function joinGame(playerID, url, request, GAME_ROOM, DB) {
     if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
 
     const gameID = url.searchParams.get("gameID");
-    const gameRoom = GAME_ROOM.get(GAME_ROOM.idFromString(gameID));
+    const gameRoom = GAME_ROOM.get(GAME_ROOM.idFromName(gameID));
     const response = await gameRoom.fetch(
         new URL("/join-game?playerID=" + playerID + "&ai=false", url.origin)
     );
@@ -489,7 +488,7 @@ async function removeAllGames(playerID, request, DB, GAME_ROOM) {
 
         // Step 2: Iterate through each game and update its Durable Object storage
         for (const gameID of activeGames) {
-            const gameRoomId = GAME_ROOM.idFromString(gameID);
+            const gameRoomId = GAME_ROOM.idFromName(gameID);
             const gameRoom = GAME_ROOM.get(gameRoomId);
 
             try {
@@ -541,7 +540,7 @@ async function getGameInfo(playerID, request, GAME_ROOM, DB) {
 
     const gamesInfo = await Promise.all(
         gameIDs.map(async (gameID) => {
-            const gameRoom = GAME_ROOM.get(GAME_ROOM.idFromString(gameID));
+            const gameRoom = GAME_ROOM.get(GAME_ROOM.idFromName(gameID));
             const response = await gameRoom.fetch("https://" + BASE_URL + "/game-info");
             const data = await response.json();
             return { gameID, players: data.players, turn: data.turn };
