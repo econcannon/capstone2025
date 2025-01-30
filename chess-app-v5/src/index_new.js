@@ -1,5 +1,6 @@
 import { Chess } from 'chess.js';
 import jwt from 'jsonwebtoken';
+import { generate } from "random-words";
 import { DurableObject } from 'cloudflare:workers';
 
 const BASE_URL = "chess-app-v5.concannon-e.workers.dev";
@@ -166,6 +167,10 @@ export class ChessGame extends DurableObject {
         if (data.message_type === "move") {
             await this.processMove(ws, data);
         }
+        else if (data.message_type === "player_message") {
+            // Intended to handle user sending emojis / text messages to the opponent
+            await this.processPlayerMessage(ws, data);
+        }
     }
 
     async processMove(ws, data) {
@@ -196,79 +201,18 @@ export class ChessGame extends DurableObject {
                 // Get AI move from Stockfish
                 await this.handleAIMove(ws, playerID);
             } else {
-                this.broadcastToOpponent(playerID, result);
+                this.broadcastMove(ws, result);
             }
         } else {
             ws.send(JSON.stringify(createResponse({ message_type: "error", error: "Invalid move" }, 400)));
         }
     }
     
-    // async getAIMoveFromFEN(fen) {
-    //     // Instantiate the WASM module directly
-    //     const wasmInstance = await WebAssembly.instantiate("./stockfish-nnue-16.wasm");
-    //     const { memory, postMessage } = wasmInstance.instance.exports;
 
-    //     const encoder = new TextEncoder();
-    //     const decoder = new TextDecoder();
-
-    //     // Initialize Stockfish
-    //     postMessage(encoder.encode("uci"));
-    //     postMessage(encoder.encode(`position fen ${fen}`));
-    //     postMessage(encoder.encode("go movetime 1000"));
-
-    //     return new Promise((resolve) => {
-    //         const checkForResult = () => {
-    //             const output = decoder.decode(memory.buffer);
-    //             if (output.includes("bestmove")) {
-    //                 const move = output.split(" ")[1];
-    //                 resolve(move);
-    //             } else {
-    //                 setTimeout(checkForResult, 50); // Retry until the best move is found
-    //             }
-    //         };
-
-    //         checkForResult();
-    //     });
-    // }
-
-
-    // async initializeStockfish() {
-    //     const importObject = {
-    //       a: {
-    //         memory: new WebAssembly.Memory({ initial: 64, maximum: 64 }),
-    //         // Add other necessary imports based on Stockfish's requirements
-    //       },
-    //     };
-      
-    //     const { instance } = await WebAssembly.instantiate(stockfishWasm, importObject);
-    //     return instance.exports;
-    // }
-
-    // async getAIMoveFromFEN(fen) {
-    //     const wasmInstance = await this.initializeStockfish();
-    //     const { memory, postMessage } = wasmInstance.instance.exports;
-    //     console.log("before getting encoder decoders");
-    //     const encoder = new TextEncoder();
-    //     const decoder = new TextDecoder();
-    //     console.log("before posting messages");
-    //     postMessage(encoder.encode("uci"));
-    //     postMessage(encoder.encode(`position fen ${fen}`));
-    //     postMessage(encoder.encode("go movetime 1000"));
-    //     console.log("Before promises");
-    //     return new Promise((resolve) => {
-    //         const checkForResult = () => {
-    //             const output = decoder.decode(memory.buffer);
-    //             if (output.includes("bestmove")) {
-    //                 const move = output.split(" ")[1];
-    //                 resolve(move);
-    //             } else {
-    //                 setTimeout(checkForResult, 50); // Retry until the best move is found
-    //             }
-    //         };
-
-    //         checkForResult();
-    //     });
-    // }
+    async processPlayerMessage(ws, data) {
+        this.sendToOpponent(ws, data);
+        return
+    }
 
 
     async getAIMove(fen, depth=4) {
@@ -316,25 +260,35 @@ export class ChessGame extends DurableObject {
     } 
     
 
-    // Broadcast message to the opponent only
-    async broadcastToOpponent(senderID, moveResult) {
-        const opponentSocket = this.ctx.getWebSockets().find((ws) => {
-            const { playerID } = ws.deserializeAttachment();
-            return playerID !== senderID;
+    // Function to generate the payload to be sent to the opponent
+    generateMovePayload(game, senderID, playersColor, players, moveResult) {
+        return JSON.stringify({
+            ...standard_game_info(game, senderID, playersColor, players, "move"),
+            move: { from: moveResult["from"], to: moveResult["to"] },
         });
+    }
+
+
+    // Function to send the payload to the opposing WebSocket
+    async sendToOpponent(senderSocket, payload) {
+        const opponentSocket = this.ctx.getWebSockets().find((ws) => ws !== senderSocket);
 
         if (opponentSocket) {
-            const opponentPayload = JSON.stringify(
-                {
-                    ...standardGameInfo(this.game, senderID, this.players_color, this.players, "move"),
-                    move: { from: moveResult["from"], to: moveResult["to"] },
-                },
-            );
-            opponentSocket.send(opponentPayload);
+            opponentSocket.send(payload);
         } else {
             console.log(`No opponent connected to receive message.`);
         }
     }
+
+
+    // Broadcast message to the opponent only
+    async broadcastMove(ws, moveResult) {
+        const payload = this.generateMovePayload(this.game, senderID, this.players_color, this.players, moveResult);
+        await this.sendToOpponent(ws, payload);
+    }
+
+
+
 
     // Handle WebSocket closure
     webSocketClose(ws) {
@@ -381,16 +335,20 @@ async function handleGameCreation(playerID, url, request, GAME_ROOM, DB) {
                 
     if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
 
-    const gameRoomID = GAME_ROOM.newUniqueId();
+    const max = 10000;
+    const min = 1;
+    const gameString = generate(3).join("-") + String(Math.floor(Math.random() * (max - min) + min));
+    const gameRoomID = GAME_ROOM.idFromString(gameString);
     const gameRoom = GAME_ROOM.get(gameRoomID);
     const success = await insertNewGame(playerID, gameRoomID, DB);
-    const ai = url.searchParams.get("ai")?.toLowerCase() === "true";
+    let ai = false;
+    ai = url.searchParams.get("ai")?.toLowerCase() === "true";
     const difficulty = url.searchParams.get("difficulty");
     await gameRoom.fetch(
         new URL("/join-game?playerID=" + playerID + "&ai=" + ai + "&difficulty=" + difficulty, url.origin)
     );
     if (success) {
-        return createResponse({ gameID: gameRoomID.toString() });
+        return createResponse({ gameID: gameString });
     } else {
         return createResponse({message_type: "error", error: "Database error occurred." }, 500);
     }
@@ -398,7 +356,7 @@ async function handleGameCreation(playerID, url, request, GAME_ROOM, DB) {
 
 
 async function handleConnect(url, request, GAME_ROOM) {
-    const gameID = url.searchParams.get("gameID");
+    const gameID = GAME_ROOM.idFromString(url.searchParams.get("gameID"));
     const playerID = url.searchParams.get("playerID");
 
     if (!gameID || !playerID) {
