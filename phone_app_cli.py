@@ -30,6 +30,7 @@ class ChessAppCLI:
         self.email = ""
         self.friends = []
         self.devices = []
+        self.auth_headers = HEADERS
 
     # -----------------------
     # Main Menu Loop
@@ -89,12 +90,18 @@ class ChessAppCLI:
 
         try:
             endpoint = f"/player/login?playerID={self.player_id}&password={self.password}"
-            self.conn.request("GET", endpoint, headers=HEADERS)
+            self.conn.request("GET", endpoint, headers=self.auth_headers)
             response = self.conn.getresponse()
 
             if response.status == 200:
                 print(f"Welcome {self.player_id}!")
                 self.authenticated = True
+                self.token = json.loads(response.read().decode()).get("token")
+                self.auth_headers = {**HEADERS, "authorization": self.token}
+            elif response.status == 403:
+                print("Authentication Failed!")
+                self.authenticated = False
+                self.auth_headers = HEADERS
             else:
                 print("Invalid username or password.")
         except Exception as e:
@@ -125,7 +132,7 @@ class ChessAppCLI:
 
         try:
             endpoint = f"/player/register?playerID={player_id}&email={email}&password={password}"
-            self.conn.request("POST", endpoint, headers=HEADERS)
+            self.conn.request("POST", endpoint, headers=self.auth_headers)
             response = self.conn.getresponse()
 
             if response.status == 200:
@@ -146,7 +153,7 @@ class ChessAppCLI:
 
         try:
             endpoint = f"/player/reset-password?playerID={player_id}&email={email}"
-            self.conn.request("POST", endpoint, headers=HEADERS)
+            self.conn.request("POST", endpoint, headers=self.auth_headers)
             response = self.conn.getresponse()
 
             if response.status == 200:
@@ -176,7 +183,7 @@ class ChessAppCLI:
     def fetch_ongoing_games_common(self):
         try:
             endpoint = f"/player/games?playerID={self.player_id}"
-            self.conn.request("GET", endpoint, headers=HEADERS)
+            self.conn.request("GET", endpoint, headers=self.auth_headers)
             response = self.conn.getresponse()
 
             try:
@@ -186,6 +193,10 @@ class ChessAppCLI:
 
             if response.status == 200 and data and data.get("games"):
                 return data.get("games")
+            elif response.status == 403:
+                print("Authentication Failed!")
+                self.authenticated = False
+                self.auth_headers = HEADERS
             else:
                 print("No ongoing games found.")
                 return []
@@ -290,7 +301,7 @@ class ChessAppCLI:
 
         try:
             endpoint = f"/player/friends?playerID={self.player_id}"
-            self.conn.request("GET", endpoint, headers=HEADERS)
+            self.conn.request("GET", endpoint, headers=self.auth_headers)
             response = self.conn.getresponse()
             data = json.loads(response.read().decode())
 
@@ -302,6 +313,10 @@ class ChessAppCLI:
                         print(f"- {friend}")
                 else:
                     print("No friends found.")
+            elif response.status == 403:
+                print("Authentication Failed!")
+                self.authenticated = False
+                self.auth_headers = HEADERS
             else:
                 print("Failed to fetch friends list.")
         except Exception as e:
@@ -328,12 +343,16 @@ class ChessAppCLI:
 
         try:
             endpoint = f"/player/friends/add?playerID={self.player_id}&friendID={friend_id}"
-            self.conn.request("POST", endpoint, headers=HEADERS)
+            self.conn.request("POST", endpoint, headers=self.auth_headers)
             response = self.conn.getresponse()
 
             if response.status == 200:
                 self.friends.append(friend_id)
                 print(f"{friend_id} has been added to your friends list.")
+            elif response.status == 403:
+                print("Authentication Failed!")
+                self.authenticated = False
+                self.auth_headers = HEADERS
             else:
                 print("Failed to add friend.")
         except Exception as e:
@@ -369,12 +388,16 @@ class ChessAppCLI:
                 return
 
             endpoint = f"/player/friends/remove?playerID={self.player_id}&friendID={friend_id}"
-            self.conn.request("POST", endpoint, headers=HEADERS)
+            self.conn.request("POST", endpoint, headers=self.auth_headers)
             response = self.conn.getresponse()
 
             if response.status == 200:
                 self.friends.remove(friend_id)
                 print(f"{friend_id} has been removed.")
+            elif response.status == 403:
+                print("Authentication Failed!")
+                self.authenticated = False
+                self.auth_headers = HEADERS
             else:
                 print("Failed to remove friend.")
         except (ValueError, IndexError):
@@ -407,11 +430,15 @@ class ChessAppCLI:
 
             friend_id = self.friends[choice - 1]
             endpoint = f"/player/challenge?playerID={self.player_id}&opponentID={friend_id}"
-            self.conn.request("POST", endpoint, headers=HEADERS)
+            self.conn.request("POST", endpoint, headers=self.auth_headers)
             response = self.conn.getresponse()
 
             if response.status == 200:
                 print(f"Challenge sent to {friend_id}.")
+            elif response.status == 403:
+                print("Authentication Failed!")
+                self.authenticated = False
+                self.auth_headers = HEADERS
             else:
                 print("Failed to send challenge.")
         except (ValueError, IndexError):
@@ -570,7 +597,7 @@ class ChessAppCLI:
             endpoint += "&ai=false"
 
         # Step 4: Make the request to create the game
-        self.conn.request("POST", endpoint, headers=HEADERS)
+        self.conn.request("POST", endpoint, headers=self.auth_headers)
         response = self.conn.getresponse()
         data = json.loads(response.read().decode())
 
@@ -578,6 +605,10 @@ class ChessAppCLI:
         if response.status == 200:
             game_id = data.get("gameID")
             print(f"Game created successfully! Game ID: {game_id}")
+        elif response.status == 403:
+                print("Authentication Failed!")
+                self.authenticated = False
+                self.auth_headers = HEADERS
         else:
             print("Failed to create game.")
 
@@ -600,12 +631,16 @@ class ChessAppCLI:
 
         endpoint = f"/player/join-game?playerID={self.player_id}&gameID={game_id}"
         try:
-            self.conn.request("POST", endpoint, headers=HEADERS)
+            self.conn.request("POST", endpoint, headers=self.auth_headers)
             response = self.conn.getresponse()
             data = json.loads(response.read().decode())
             print(data)
             if response.status == 200:
                 print(f"Successfully joined game {game_id}.")
+            elif response.status == 403:
+                print("Authentication Failed!")
+                self.authenticated = False
+                self.auth_headers = HEADERS
             else:
                 print("Failed to join game.")
         except Exception as e:
@@ -659,12 +694,16 @@ class ChessAppCLI:
     def leave_all_games(self):
         endpoint = f"/player/end-all-games?playerID={self.player_id}"
         try:
-            self.conn.request("POST", endpoint, headers=HEADERS)
+            self.conn.request("POST", endpoint, headers=self.auth_headers)
             response = self.conn.getresponse()
 
             # Handle the response
             if response.status == 200:
                 print(f"Successfully left games.")
+            elif response.status == 403:
+                print("Authentication Failed!")
+                self.authenticated = False
+                self.auth_headers = HEADERS
             else:
                 data = json.loads(response.read().decode())
                 print(f"Failed to leave games: {data.get('error', 'Unknown error')}")
@@ -677,13 +716,17 @@ class ChessAppCLI:
     def leave_specific_game(self, game_id):
         endpoint = f"/player/end-game?playerID={self.player_id}&gameID={game_id}"
         try:
-            self.conn.request("POST", endpoint, headers=HEADERS)
+            self.conn.request("POST", endpoint, headers=self.auth_headers)
             response = self.conn.getresponse()
             
 
             # Handle the response
             if response.status == 200:
                 print(f"Successfully left game {game_id}.")
+            elif response.status == 403:
+                print("Authentication Failed!")
+                self.authenticated = False
+                self.auth_headers = HEADERS
             else:
                 data = json.loads(response.read().decode())
                 print(f"Failed to leave game {game_id}: {data.get('error', 'Unknown error')}")
@@ -698,12 +741,15 @@ class ChessAppCLI:
     # -----------------------
     def log_out(self):
         self.authenticated = False
+        self.auth_headers = HEADERS
         print("Logged out.")
+
 
     def is_valid_password(self, password):
         if len(password) < 8 or not re.search(r"[A-Za-z0-9]", password):
             return False, "Password must be at least 8 characters with uppercase, lowercase, and numbers."
         return True, "Password is valid."
+
 
     def is_valid_email(self, email):
         return bool(re.match(r"[^@]+@[^@]+\.[^@]+", email))
