@@ -5,6 +5,7 @@ import json
 import chess
 
 player_id = "EricC"
+password = "Fire1776"
 BASE_URL = "chess-app-v5.concannon-e.workers.dev"
 
 def display_fen_as_board(fen):
@@ -17,7 +18,7 @@ async def create_game(conn, token):
         "Content-Type": "application/json",
         "authorization": token
     }
-    conn.request("POST", f"/create?playerID={player_id}&ai={True}&depth=1", body=None, headers=headers)
+    conn.request("POST", f"/create?playerID={player_id}&ai={False}&depth=1", body=None, headers=headers)
     response = conn.getresponse()
     
     if response.status == 200:
@@ -30,8 +31,25 @@ async def create_game(conn, token):
         return None
 
 
-async def join_game():
+async def join_game(conn, token):
     game_id = input("Enter the game ID to join: ")
+    print(f"received gameID {game_id}")
+    headers = {
+        "Content-Type": "application/json",
+        "authorization": token
+    }
+    conn.request("POST", f"/player/join-game?playerID={player_id}&game_id={game_id}", body=None, headers=headers)
+    response = conn.getresponse()
+    
+    if response.status == 200:
+        print("Successfully joined game {game_id}")
+    elif response.status == 403:
+        print("Already in game: {game_id}, reconnecting...")
+        return game_id
+    else:
+        print(f"Failed to join game. Status code: {response.status}, {json.loads(response.read().decode()).get("error")}")
+        return None
+    
     return game_id
 
 
@@ -116,14 +134,13 @@ def getMoveLogic():
 
 async def handle_reconnect():
     print("Attempting to reconnect...")
-    await asyncio.sleep(5)  # Wait before reconnecting
+    await asyncio.sleep(1)  # Wait before reconnecting
     await main()  # Re-run the main function to reconnect
 
 
 async def main():
     choice = input("Create (1) or Join (2) a game? (1/2): ")
-    player_id = "EricC"
-    password = "Fire1776"
+    
     endpoint = f"/player/login?playerID={player_id}&password={password}"
 
     conn = http.client.HTTPSConnection(BASE_URL)
@@ -138,16 +155,18 @@ async def main():
     if choice == "1":
         game_id = await create_game(conn, token)
     elif choice == "2":
-        game_id = await join_game()
+        game_id = await join_game(conn, token)
     else:
         print("Invalid choice.")
         return
 
-    URL = f"wss://{BASE_URL}/connect?gameID={game_id}&playerID={player_id}"
-    token_header = {"authorization": token}
-    async with websockets.connect(URL, additional_headers=token_header) as websocket:
-        print(f"Connected to game {game_id} as {player_id}")
-        await play_game(websocket)
+    if game_id:
+        URL = f"wss://{BASE_URL}/connect?gameID={game_id}&playerID={player_id}"
+        token_header = {"authorization": token}
+        async with websockets.connect(URL, additional_headers=token_header) as websocket:
+            print(f"Connected to game {game_id} as {player_id}")
+            await play_game(websocket)
+    else: await handle_reconnect()
 
 
 if __name__ == "__main__":

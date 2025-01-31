@@ -142,6 +142,11 @@ export class ChessGame extends DurableObject {
         const url = new URL(request.url);
         const playerID = url.searchParams.get("playerID");
 
+        const joinGameResponse = this.handleJoinGame(playerID, this.ai, this.depth);
+        if (joinGameResponse.message_type === "error") {
+            return joinGameResponse
+        }
+
         const [clientSocket, serverSocket] = new WebSocketPair();
         this.ctx.acceptWebSocket(serverSocket);
 
@@ -201,7 +206,7 @@ export class ChessGame extends DurableObject {
                 // Get AI move from Stockfish
                 await this.handleAIMove(ws, playerID);
             } else {
-                this.broadcastMove(ws, result);
+                this.broadcastMove(ws, result, playerID);
             }
         } else {
             ws.send(JSON.stringify(createResponse({ message_type: "error", error: "Invalid move" }, 400)));
@@ -263,7 +268,7 @@ export class ChessGame extends DurableObject {
     // Function to generate the payload to be sent to the opponent
     generateMovePayload(game, senderID, playersColor, players, moveResult) {
         return JSON.stringify({
-            ...standard_game_info(game, senderID, playersColor, players, "move"),
+            ...standardGameInfo(game, senderID, playersColor, players, "move"),
             move: { from: moveResult["from"], to: moveResult["to"] },
         });
     }
@@ -282,11 +287,10 @@ export class ChessGame extends DurableObject {
 
 
     // Broadcast message to the opponent only
-    async broadcastMove(ws, moveResult) {
+    async broadcastMove(ws, moveResult, senderID) {
         const payload = this.generateMovePayload(this.game, senderID, this.players_color, this.players, moveResult);
         await this.sendToOpponent(ws, payload);
     }
-
 
 
     // Handle WebSocket closure
@@ -338,7 +342,7 @@ async function handleGameCreation(playerID, url, request, GAME_ROOM, DB) {
     const gameString = generate(3).join("-") + String(Math.floor(Math.random() * (max - min) + min));
     const gameRoomID = GAME_ROOM.idFromName(gameString);
     const gameRoom = GAME_ROOM.get(gameRoomID);
-    const success = await insertNewGame(playerID, gameRoomID, DB);
+    const success = await insertNewGame(playerID, gameString, DB);
     let ai = false;
     ai = url.searchParams.get("ai")?.toLowerCase() === "true";
     const difficulty = url.searchParams.get("difficulty");
@@ -412,7 +416,8 @@ async function joinGame(playerID, url, request, GAME_ROOM, DB) {
     );
 
     if (response.ok) {
-        const data = await response.json();
+        const clonedResponse = response.clone(); // Clone before consuming
+        const data = await clonedResponse.json();
         if (data.message_type !== "error") {
             await insertNewGame(playerID, gameID, DB);
         }
@@ -429,7 +434,7 @@ async function insertNewGame(playerID, gameID, DB) {
         WHERE id = ?;
     `;
     try {
-        const result = await DB.prepare(query).bind(gameID.toString(), playerID).run();
+        const result = await DB.prepare(query).bind(gameID, playerID).run();
         return result.success;
     } catch (error) {
         console.error("Error inserting new game:", error);
