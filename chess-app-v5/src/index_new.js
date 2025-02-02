@@ -1,8 +1,12 @@
 import { Chess } from 'chess.js';
+import jwt from 'jsonwebtoken';
+import { generate } from "random-words";
 import { DurableObject } from 'cloudflare:workers';
 
 const BASE_URL = "chess-app-v5.concannon-e.workers.dev";
 const STOCKFISH_URL = "https://stockfish.online/api/s/v2.php";
+const SECRET_KEY = "capstone-chesslink"
+const OPTIONS = { expiresIn: 60*30 };
 
 // Standardized Response Helper
 function createResponse(body, status = 200) {
@@ -13,7 +17,7 @@ function createResponse(body, status = 200) {
 }
 
 
-function standard_game_info(game, playerID, players_color, players, message_type = "game-state") {
+function standardGameInfo(game, playerID, players_color, players, message_type = "game-state") {
     const color = (players_color.white === playerID) ? "white" : "black";
     
     return {
@@ -26,6 +30,24 @@ function standard_game_info(game, playerID, players_color, players, message_type
         message_type
     };
 }
+
+
+function generateToken(playerID) {
+    const payload = { playerID: playerID, role: "user" };
+    return jwt.sign(payload, SECRET_KEY, OPTIONS);
+}
+
+
+function verifyToken(request) {
+    try {
+        const token = request.headers.get('authorization');
+        jwt.verify(token, SECRET_KEY, OPTIONS); // This will throw an error if the token is invalid
+        return true; // Token is valid
+    } catch (err) {
+        return false; // Token is invalid
+    }
+}
+  
 
 
 export class ChessGame extends DurableObject {
@@ -77,7 +99,7 @@ export class ChessGame extends DurableObject {
                 const depth = parseInt(url.searchParams.get("depth"), 10);
                 return this.handleJoinGame(playerID, ai, depth);
             case "/game-info":
-                return createResponse(standard_game_info(this.game, playerID, this.players_color, this.players));
+                return createResponse(standardGameInfo(this.game, playerID, this.players_color, this.players));
             default:
                 return createResponse({ error: "Not Found" }, 404);
         }
@@ -109,7 +131,7 @@ export class ChessGame extends DurableObject {
                 return createResponse({message_type: "error", error: "You are already in this game!" }, 403);
             }
 
-            return createResponse(standard_game_info(this.game, playerID, this.players_color, this.players));
+            return createResponse(standardGameInfo(this.game, playerID, this.players_color, this.players));
         } catch (error) {
             return createResponse({message_type: "error", error: "Error updating durable object storage." }, 500);
         }
@@ -119,6 +141,11 @@ export class ChessGame extends DurableObject {
     async handleWebSocket(request) {
         const url = new URL(request.url);
         const playerID = url.searchParams.get("playerID");
+
+        const joinGameResponse = this.handleJoinGame(playerID, this.ai, this.depth);
+        if (joinGameResponse.message_type === "error") {
+            return joinGameResponse
+        }
 
         const [clientSocket, serverSocket] = new WebSocketPair();
         this.ctx.acceptWebSocket(serverSocket);
@@ -134,7 +161,7 @@ export class ChessGame extends DurableObject {
         }
 
         await this.storage.put("players_color", this.players_color);
-        await serverSocket.send(JSON.stringify(standard_game_info(this.game, playerID, this.players_color, this.players)));
+        await serverSocket.send(JSON.stringify(standardGameInfo(this.game, playerID, this.players_color, this.players)));
 
         return new Response(null, { status: 101, webSocket: clientSocket });
     }
@@ -144,6 +171,10 @@ export class ChessGame extends DurableObject {
         const data = JSON.parse(msg);
         if (data.message_type === "move") {
             await this.processMove(ws, data);
+        }
+        else if (data.message_type === "player_message") {
+            // Intended to handle user sending emojis / text messages to the opponent
+            await this.processPlayerMessage(ws, data);
         }
     }
 
@@ -168,86 +199,25 @@ export class ChessGame extends DurableObject {
         if (result) {
             await this.storage.put("gameState", this.game.fen());
     
-            const confirmationPayload = JSON.stringify(standard_game_info(this.game, playerID, this.players_color, this.players, "confirmation"));
+            const confirmationPayload = JSON.stringify(standardGameInfo(this.game, playerID, this.players_color, this.players, "confirmation"));
             ws.send(confirmationPayload);
             console.log("Process move: " + this.ai.toString());
             if (this.ai) {
                 // Get AI move from Stockfish
                 await this.handleAIMove(ws, playerID);
             } else {
-                this.broadcastToOpponent(playerID, result);
+                this.broadcastMove(ws, result, playerID);
             }
         } else {
             ws.send(JSON.stringify(createResponse({ message_type: "error", error: "Invalid move" }, 400)));
         }
     }
     
-    // async getAIMoveFromFEN(fen) {
-    //     // Instantiate the WASM module directly
-    //     const wasmInstance = await WebAssembly.instantiate("./stockfish-nnue-16.wasm");
-    //     const { memory, postMessage } = wasmInstance.instance.exports;
 
-    //     const encoder = new TextEncoder();
-    //     const decoder = new TextDecoder();
-
-    //     // Initialize Stockfish
-    //     postMessage(encoder.encode("uci"));
-    //     postMessage(encoder.encode(`position fen ${fen}`));
-    //     postMessage(encoder.encode("go movetime 1000"));
-
-    //     return new Promise((resolve) => {
-    //         const checkForResult = () => {
-    //             const output = decoder.decode(memory.buffer);
-    //             if (output.includes("bestmove")) {
-    //                 const move = output.split(" ")[1];
-    //                 resolve(move);
-    //             } else {
-    //                 setTimeout(checkForResult, 50); // Retry until the best move is found
-    //             }
-    //         };
-
-    //         checkForResult();
-    //     });
-    // }
-
-
-    // async initializeStockfish() {
-    //     const importObject = {
-    //       a: {
-    //         memory: new WebAssembly.Memory({ initial: 64, maximum: 64 }),
-    //         // Add other necessary imports based on Stockfish's requirements
-    //       },
-    //     };
-      
-    //     const { instance } = await WebAssembly.instantiate(stockfishWasm, importObject);
-    //     return instance.exports;
-    // }
-
-    // async getAIMoveFromFEN(fen) {
-    //     const wasmInstance = await this.initializeStockfish();
-    //     const { memory, postMessage } = wasmInstance.instance.exports;
-    //     console.log("before getting encoder decoders");
-    //     const encoder = new TextEncoder();
-    //     const decoder = new TextDecoder();
-    //     console.log("before posting messages");
-    //     postMessage(encoder.encode("uci"));
-    //     postMessage(encoder.encode(`position fen ${fen}`));
-    //     postMessage(encoder.encode("go movetime 1000"));
-    //     console.log("Before promises");
-    //     return new Promise((resolve) => {
-    //         const checkForResult = () => {
-    //             const output = decoder.decode(memory.buffer);
-    //             if (output.includes("bestmove")) {
-    //                 const move = output.split(" ")[1];
-    //                 resolve(move);
-    //             } else {
-    //                 setTimeout(checkForResult, 50); // Retry until the best move is found
-    //             }
-    //         };
-
-    //         checkForResult();
-    //     });
-    // }
+    async processPlayerMessage(ws, data) {
+        this.sendToOpponent(ws, data);
+        return
+    }
 
 
     async getAIMove(fen, depth=4) {
@@ -286,7 +256,7 @@ export class ChessGame extends DurableObject {
             await this.storage.put("gameState", this.game.fen());
 
             const aiMovePayload = JSON.stringify(
-                standard_game_info(this.game, playerID, this.players_color, this.players, "game-state")
+                standardGameInfo(this.game, playerID, this.players_color, this.players, "game-state")
             );
             ws.send(aiMovePayload);
         } else {
@@ -295,25 +265,33 @@ export class ChessGame extends DurableObject {
     } 
     
 
-    // Broadcast message to the opponent only
-    async broadcastToOpponent(senderID, moveResult) {
-        const opponentSocket = this.ctx.getWebSockets().find((ws) => {
-            const { playerID } = ws.deserializeAttachment();
-            return playerID !== senderID;
+    // Function to generate the payload to be sent to the opponent
+    generateMovePayload(game, senderID, playersColor, players, moveResult) {
+        return JSON.stringify({
+            ...standardGameInfo(game, senderID, playersColor, players, "move"),
+            move: { from: moveResult["from"], to: moveResult["to"] },
         });
+    }
+
+
+    // Function to send the payload to the opposing WebSocket
+    async sendToOpponent(senderSocket, payload) {
+        const opponentSocket = this.ctx.getWebSockets().find((ws) => ws !== senderSocket);
 
         if (opponentSocket) {
-            const opponentPayload = JSON.stringify(
-                {
-                    ...standard_game_info(this.game, senderID, this.players_color, this.players, "move"),
-                    move: { from: moveResult["from"], to: moveResult["to"] },
-                },
-            );
-            opponentSocket.send(opponentPayload);
+            opponentSocket.send(payload);
         } else {
             console.log(`No opponent connected to receive message.`);
         }
     }
+
+
+    // Broadcast message to the opponent only
+    async broadcastMove(ws, moveResult, senderID) {
+        const payload = this.generateMovePayload(this.game, senderID, this.players_color, this.players, moveResult);
+        await this.sendToOpponent(ws, payload);
+    }
+
 
     // Handle WebSocket closure
     webSocketClose(ws) {
@@ -341,12 +319,12 @@ export default {
         const { GAME_ROOM, DB } = env;
 
         const url_path = url.pathname.split('/');
-
+        
         switch (url_path[1]) {
             case "create":
-                return handleGameCreation(playerID, url, GAME_ROOM, DB);
+                return handleGameCreation(playerID, url, request, GAME_ROOM, DB);
             case "player":
-                return handlePlayerActions(url_path, url, playerID, DB, GAME_ROOM);
+                return handlePlayerActions(url_path, url, request, playerID, DB, GAME_ROOM);
             case "connect":
                 return handleConnect(url, request, GAME_ROOM);
             default:
@@ -355,19 +333,24 @@ export default {
     }
 };
 
-async function handleGameCreation(playerID, url, GAME_ROOM, DB) {
+async function handleGameCreation(playerID, url, request, GAME_ROOM, DB) {
     if (!playerID) return createResponse({message_type: "error", error: "Player ID required." }, 400);
-    
-    const gameRoomID = GAME_ROOM.newUniqueId();
+    if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
+
+    const max = 999999999;
+    const min = 0;
+    const gameString = generate(3).join("-") + String(Math.floor(Math.random() * (max - min) + min));
+    const gameRoomID = GAME_ROOM.idFromName(gameString);
     const gameRoom = GAME_ROOM.get(gameRoomID);
-    const success = await insertNewGame(playerID, gameRoomID, DB);
-    const ai = url.searchParams.get("ai")?.toLowerCase() === "true";
+    const success = await insertNewGame(playerID, gameString, DB);
+    let ai = false;
+    ai = url.searchParams.get("ai")?.toLowerCase() === "true";
     const difficulty = url.searchParams.get("difficulty");
     await gameRoom.fetch(
         new URL("/join-game?playerID=" + playerID + "&ai=" + ai + "&difficulty=" + difficulty, url.origin)
     );
     if (success) {
-        return createResponse({ gameID: gameRoomID.toString() });
+        return createResponse({ gameID: gameString });
     } else {
         return createResponse({message_type: "error", error: "Database error occurred." }, 500);
     }
@@ -375,7 +358,7 @@ async function handleGameCreation(playerID, url, GAME_ROOM, DB) {
 
 
 async function handleConnect(url, request, GAME_ROOM) {
-    const gameID = url.searchParams.get("gameID");
+    const gameID = GAME_ROOM.idFromName(url.searchParams.get("gameID"));
     const playerID = url.searchParams.get("playerID");
 
     if (!gameID || !playerID) {
@@ -383,27 +366,26 @@ async function handleConnect(url, request, GAME_ROOM) {
     }
 
     // Retrieve the existing game Durable Object by ID
-    const gameRoomId = GAME_ROOM.idFromString(gameID);
-    const gameRoom = GAME_ROOM.get(gameRoomId);
+    const gameRoom = GAME_ROOM.get(gameID);
 
     return gameRoom.fetch(request);
 }
 
 
-async function handlePlayerActions(url_path, url, playerID, DB, GAME_ROOM) {
+async function handlePlayerActions(url_path, url, request, playerID, DB, GAME_ROOM) {
     switch (url_path[2]) {
         case "login":
             return loginPlayer(playerID, url, DB);
         case "join-game":
-            return joinGame(playerID, url, GAME_ROOM, DB);
+            return joinGame(playerID, url, request, GAME_ROOM, DB);
         case "games":
-            return getGameInfo(playerID, GAME_ROOM, DB);
+            return getGameInfo(playerID, request, GAME_ROOM, DB);
         case "register":
             return registerPlayer(playerID, url, DB);
         case "end-game":
-            return removeGameFromActive(playerID, url, DB);
+            return removeGameFromActive(playerID, url, request, DB);
         case "end-all-games":
-            return removeAllGames(playerID, DB);
+            return removeAllGames(playerID, request, DB, GAME_ROOM);
         default:
             return createResponse({message_type: "error", error: "Invalid action" }, 400);
     }
@@ -415,23 +397,27 @@ async function loginPlayer(playerID, url, DB) {
     const query = `SELECT * FROM users WHERE id = ? AND password = ?;`;
 
     const result = await DB.prepare(query).bind(playerID, password).first();
+    const token = generateToken(playerID);
     if (result) {
-        return createResponse({});
+        return createResponse({token: token});
     } else {
         return createResponse({}, 404);
     }
 }
 
 
-async function joinGame(playerID, url, GAME_ROOM, DB) {
+async function joinGame(playerID, url, request, GAME_ROOM, DB) {
+    if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
+
     const gameID = url.searchParams.get("gameID");
-    const gameRoom = GAME_ROOM.get(GAME_ROOM.idFromString(gameID));
+    const gameRoom = GAME_ROOM.get(GAME_ROOM.idFromName(gameID));
     const response = await gameRoom.fetch(
         new URL("/join-game?playerID=" + playerID + "&ai=false", url.origin)
     );
 
     if (response.ok) {
-        const data = await response.json();
+        const clonedResponse = response.clone(); // Clone before consuming
+        const data = await clonedResponse.json();
         if (data.message_type !== "error") {
             await insertNewGame(playerID, gameID, DB);
         }
@@ -448,7 +434,7 @@ async function insertNewGame(playerID, gameID, DB) {
         WHERE id = ?;
     `;
     try {
-        const result = await DB.prepare(query).bind(gameID.toString(), playerID).run();
+        const result = await DB.prepare(query).bind(gameID, playerID).run();
         return result.success;
     } catch (error) {
         console.error("Error inserting new game:", error);
@@ -457,7 +443,9 @@ async function insertNewGame(playerID, gameID, DB) {
 }
 
 
-async function removeGameFromActive(playerID, url, DB) {
+async function removeGameFromActive(playerID, url, request, DB) {
+    if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
+
     const gameID = url.searchParams.get("gameID");
     const query = `
         UPDATE users
@@ -474,7 +462,7 @@ async function removeGameFromActive(playerID, url, DB) {
     `;
 
     try {
-        const result = await DB.prepare(query).bind(gameID, gameID, gameID, playerID).run();
+        await DB.prepare(query).bind(gameID, gameID, gameID, playerID).run();
         return createResponse();
     } catch (error) {
         console.error("Error removing game from active games:", error);
@@ -484,7 +472,9 @@ async function removeGameFromActive(playerID, url, DB) {
 
 
 // add fetch response for durable object
-async function removeAllGames(playerID, DB, GAME_ROOM) {
+async function removeAllGames(playerID, request, DB, GAME_ROOM) {
+    if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
+
     // Step 1: Fetch all active games for the player
     const query = `
         SELECT active_games 
@@ -503,7 +493,7 @@ async function removeAllGames(playerID, DB, GAME_ROOM) {
 
         // Step 2: Iterate through each game and update its Durable Object storage
         for (const gameID of activeGames) {
-            const gameRoomId = GAME_ROOM.idFromString(gameID);
+            const gameRoomId = GAME_ROOM.idFromName(gameID);
             const gameRoom = GAME_ROOM.get(gameRoomId);
 
             try {
@@ -539,8 +529,9 @@ async function removeAllGames(playerID, DB, GAME_ROOM) {
 }
 
 
-async function getGameInfo(playerID, GAME_ROOM, DB) {
+async function getGameInfo(playerID, request, GAME_ROOM, DB) {
     if (!playerID) return createResponse({message_type: "error", error: "Player ID is required." }, 400);
+    if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
 
     const query = `SELECT active_games FROM users WHERE id = ?;`;
     const result = await DB.prepare(query).bind(playerID).all();
@@ -554,7 +545,7 @@ async function getGameInfo(playerID, GAME_ROOM, DB) {
 
     const gamesInfo = await Promise.all(
         gameIDs.map(async (gameID) => {
-            const gameRoom = GAME_ROOM.get(GAME_ROOM.idFromString(gameID));
+            const gameRoom = GAME_ROOM.get(GAME_ROOM.idFromName(gameID));
             const response = await gameRoom.fetch("https://" + BASE_URL + "/game-info");
             const data = await response.json();
             return { gameID, players: data.players, turn: data.turn };
