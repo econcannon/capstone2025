@@ -4,28 +4,82 @@ import 'dart:convert';
 import 'main.dart';
 import 'chess.dart';
 
-class ViewOngoingGame extends StatelessWidget {
+
+
+class ViewOngoingGame extends StatefulWidget {
   final String playerId;
 
-  ViewOngoingGame({super.key, required this.playerId});
+  const ViewOngoingGame({super.key, required this.playerId});
 
-  Future<List<Map<String, dynamic>>> fetchOngoingGames() async {
+  @override
+  _ViewOngoingGameState createState() => _ViewOngoingGameState();
+}
+
+class _ViewOngoingGameState extends State<ViewOngoingGame> {
+  List<Map<String, dynamic>> _games = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchGames();
+  }
+
+  Future<void> _fetchGames() async {
     try {
-      final endpoint = "$BASE_URL/player/games?playerID=$playerId";
+      final endpoint = "$BASE_URL/player/games?playerID=${widget.playerId}";
       final response = await http.get(Uri.parse(endpoint), headers: HEADERS);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data != null && data['games'] != null) {
-          return List<Map<String, dynamic>>.from(data['games']);
+          setState(() {
+            _games = List<Map<String, dynamic>>.from(data['games']);
+          });
         }
+      } else {
+        print("Failed to fetch games.");
       }
-
-      print("No ongoing games found.");
-      return [];
     } catch (e) {
       print("Error fetching games: $e");
-      return [];
+    }
+  }
+
+  Future<void> _deleteAllGames() async {
+    try {
+      final endpoint =
+          "$BASE_URL/player/end-all-games?playerID=${widget.playerId}";
+      final response = await http.post(Uri.parse(endpoint), headers: HEADERS);
+
+      if (response.statusCode == 200) {
+        print("All games deleted successfully.");
+        setState(() {
+          _games.clear(); 
+        });
+      } else {
+        print("Failed to delete all games.");
+      }
+    } catch (e) {
+      print("Error deleting all games: $e");
+    }
+  }
+
+  Future<void> _deleteGame(String gameID) async {
+    try {
+      final endpoint =
+          "$BASE_URL/player/end-game?playerID=${widget.playerId}&gameID=$gameID";
+      final response = await http.post(Uri.parse(endpoint), headers: HEADERS);
+
+      if (response.statusCode == 200) {
+        print("Game deleted successfully.");
+
+        setState(() {
+          _games.removeWhere((game) => game['gameID'] == gameID);
+        });
+      } else {
+        print("Failed to delete game.");
+      }
+    } catch (e) {
+      print("Error deleting game: $e");
     }
   }
 
@@ -34,40 +88,51 @@ class ViewOngoingGame extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Ongoing Games'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: _deleteAllGames,
+          ),
+        ],
       ),
-      body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: fetchOngoingGames(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          } else if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('No ongoing games found.'));
-          }
-
-          final games = snapshot.data!;
-          return ListView.builder(
-            itemCount: games.length,
-            itemBuilder: (context, index) {
-              final game = games[index];
-              return ListTile(
-                title: Text("Game ID: ${game['gameID']}"),
-                subtitle: Text(
-                  "Players: ${game['players']}\nTurn: ${game['turn']}",
-                ),
-                isThreeLine: true,
-              );
-            },
-          );
-        },
-      ),
+      body: _games.isEmpty
+          ? const Center(child: Text('No ongoing games found.'))
+          : ListView.builder(
+              itemCount: _games.length,
+              itemBuilder: (context, index) {
+                final game = _games[index];
+                return Card(
+                  margin: const EdgeInsets.all(8.0),
+                  elevation: 4.0,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Game ID: ${game['gameID']}"),
+                        const SizedBox(height: 8.0),
+                        Text("Players: ${game['players']}"),
+                        const SizedBox(height: 8.0),
+                        Text("Turn: ${game['turn']}"),
+                        const SizedBox(height: 16.0),
+                        Center(
+                          child: ElevatedButton(
+                            onPressed: () => _deleteGame(game['gameID']),
+                            child: const Text('Delete Game'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
     );
   }
 }
 
-class JoinExistingGame extends StatelessWidget {
-  const JoinExistingGame({super.key});
+class JoinGameWithID extends StatelessWidget {
+  const JoinGameWithID({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +140,7 @@ class JoinExistingGame extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Log In'),
+        title: const Text('Join Game by ID'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -103,7 +168,7 @@ class JoinExistingGame extends StatelessWidget {
                       builder: (context) => GamePage(gameId: GAMEID)),
                 );
               },
-              child: const Text('Join Existing Game'),
+              child: const Text('Join Game'),
             ),
           ],
         ),

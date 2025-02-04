@@ -59,11 +59,19 @@ class _GamePage extends State<GamePage> {
           playerColor = decodedMessage["color"];
           String fen = decodedMessage["fen"];
           print("Game State Updated: $fen");
+          setState(() {
+            if (playerColor == "white") {
+              player = Squares.white;
+            } else {
+              player = Squares.black;
+            }
+            game =
+                bishop.Game(variant: bishop.Variant.standard());
+            state = game.squaresState(player); 
+          });
           print("You are playing as $playerColor");
           _updateGameState(fen);
-        }
-
-        else if (decodedMessage["message_type"] == "move") {
+        } else if (decodedMessage["message_type"] == "move") {
           final opponentMove = decodedMessage["move"];
           String opponentFrom = opponentMove["from"];
           String opponentTo = opponentMove["to"];
@@ -75,15 +83,11 @@ class _GamePage extends State<GamePage> {
           if (decodedMessage["turn"] == playerColor?[0]) {
             print("Your turn!");
           }
-        }
-
-        else if (decodedMessage["message_type"] == "confirmation") {
+        } else if (decodedMessage["message_type"] == "confirmation") {
           String fen = decodedMessage["fen"];
           print("Move confirmed: $fen");
           _updateGameState(fen);
-        }
-
-        else if (decodedMessage["message_type"] == "error") {
+        } else if (decodedMessage["message_type"] == "error") {
           print("Illegal move: ${decodedMessage["error"]}");
         }
       }, onDone: () {

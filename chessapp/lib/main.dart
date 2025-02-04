@@ -4,6 +4,8 @@ import 'main_menu.dart';
 import 'manage_game.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'constants.dart';
+import 'package:chessapp/Screens/Welcome/welcome_screen.dart';
 
 String SSID_CHAR_UUID = "8266532f-1fe1-4af9-97e1-3b7c04ef8201";
 String PASSWORD_CHAR_UUID = "91abf729-1b45-4147-b8f7-b93620e8bce1";
@@ -21,10 +23,6 @@ int PORT = 443;
 Map<String, String> HEADERS = {
   "Content-Type": "application/json",
 };
-
-void main() {
-  runApp(const MyApp());
-}
 
 mixin CreateGame {
   Future<bool> createGame(bool ai, Uri endpoint) async {
@@ -65,6 +63,47 @@ class MyApp extends StatelessWidget {
     );
   }
 }
+
+void main() => runApp(const MyApp());
+
+// class MyApp extends StatelessWidget {
+//   const MyApp({Key? key}) : super(key: key);
+
+//   // This widget is the root of your application.
+//   @override
+//   Widget build(BuildContext context) {
+//     return MaterialApp(
+//       debugShowCheckedModeBanner: false,
+//       title: 'Flutter Auth',
+//       theme: ThemeData(
+//           primaryColor: kPrimaryColor,
+//           scaffoldBackgroundColor: Colors.white,
+//           elevatedButtonTheme: ElevatedButtonThemeData(
+//             style: ElevatedButton.styleFrom(
+//               elevation: 0,
+//               foregroundColor: Colors.white,
+//               backgroundColor: kPrimaryColor,
+//               shape: const StadiumBorder(),
+//               maximumSize: const Size(double.infinity, 56),
+//               minimumSize: const Size(double.infinity, 56),
+//             ),
+//           ),
+//           inputDecorationTheme: const InputDecorationTheme(
+//             filled: true,
+//             fillColor: kPrimaryLightColor,
+//             iconColor: kPrimaryColor,
+//             prefixIconColor: kPrimaryColor,
+//             contentPadding: EdgeInsets.symmetric(
+//                 horizontal: defaultPadding, vertical: defaultPadding),
+//             border: OutlineInputBorder(
+//               borderRadius: BorderRadius.all(Radius.circular(30)),
+//               borderSide: BorderSide.none,
+//             ),
+//           )),
+//       home: const WelcomeScreen(),
+//     );
+//   }
+// }
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -107,6 +146,18 @@ class ButtonPage extends StatelessWidget {
               width: 300,
               child: ElevatedButton(
                 onPressed: () {
+                //   Navigator.push(
+                //     context,
+                //     MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+                //   );
+                },
+                child: const Text('test'), //done
+              ),
+            ),
+            SizedBox(
+              width: 300,
+              child: ElevatedButton(
+                onPressed: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const LogInPage()),
@@ -122,6 +173,7 @@ class ButtonPage extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const SignUpPage()),
+                    //MaterialPageRoute(builder: (context) => const SignUp()),
                   );
                 },
                 child: const Text('Sign Up'), //done
@@ -225,7 +277,6 @@ class ManageGame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final TextEditingController gameIdController = TextEditingController();
     return Scaffold(
       appBar: AppBar(
         title: const Text('Manage Games'),
@@ -252,21 +303,69 @@ class ManageGame extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: () {
                   Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => JoinExistingGame(),)
-                  );
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => JoinGame(),
+                      ));
                 },
-                child: const Text('Join Existing Game'),
+                child: const Text('Join Game'),
+              ),
+            ),
+            SizedBox(
+              width: 300,
+              child: ElevatedButton(
+                onPressed: () {},
+                child: const Text('Send Game to Board'),
               ),
             ),
             SizedBox(
               width: 300,
               child: ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(context);
+                  Navigator.of(context).popUntil((route) => route.isFirst);
                 },
-                child: const Text('Leave Game'),
+                child: const Text('Back to Main Menu'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class JoinGame extends StatelessWidget {
+  const JoinGame({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Join Games'),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 300,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => JoinGameWithID(),
+                      ));
+                },
+                child: const Text('Join Game by ID'),
+              ),
+            ),
+            SizedBox(
+              width: 300,
+              child: ElevatedButton(
+                onPressed: () {},
+                child: const Text('Join Public Game'),
               ),
             ),
             SizedBox(
@@ -280,21 +379,7 @@ class ManageGame extends StatelessWidget {
                             ViewOngoingGame(playerId: PLAYERID)),
                   );
                 },
-                child: const Text('View Ongoing Games'),
-              ),
-            ),
-            SizedBox(
-              width: 300,
-              child: ElevatedButton(
-                onPressed: () {},
-                child: const Text('Send Game to Board'),
-              ),
-            ),
-            SizedBox(
-              width: 300,
-              child: ElevatedButton(
-                onPressed: () {},
-                child: const Text('Play Game Locally'),
+                child: const Text('Join Your Ongoing Games'),
               ),
             ),
             SizedBox(
@@ -339,8 +424,7 @@ class PlayOption extends StatelessWidget with CreateGame {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (context) =>
-                              GamePage(gameId: GAMEID)),
+                          builder: (context) => GamePage(gameId: GAMEID)),
                     );
                   } else {
                     print("Failed to create game");
@@ -403,8 +487,7 @@ class AIOption extends StatelessWidget with CreateGame {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (context) =>
-                              GamePage(gameId: GAMEID)),
+                          builder: (context) => GamePage(gameId: GAMEID)),
                     );
                   } else {
                     print("Failed to create game");
@@ -425,8 +508,7 @@ class AIOption extends StatelessWidget with CreateGame {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (context) =>
-                              GamePage(gameId: GAMEID)),
+                          builder: (context) => GamePage(gameId: GAMEID)),
                     );
                   } else {
                     print("Failed to create game");
@@ -447,8 +529,7 @@ class AIOption extends StatelessWidget with CreateGame {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (context) =>
-                              GamePage(gameId: GAMEID)),
+                          builder: (context) => GamePage(gameId: GAMEID)),
                     );
                   } else {
                     print("Failed to create game");

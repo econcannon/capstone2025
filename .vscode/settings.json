@@ -1,3 +1,4 @@
 {
-    "cmake.sourceDirectory": "C:/Users/Thuong Tran/Documents/GitHub/capstone2025/libraries/ArduinoJson/extras/tests/FailingBuilds"
+    "cmake.sourceDirectory": "C:/Users/Thuong Tran/Documents/GitHub/capstone2025/libraries/ArduinoJson/extras/tests/FailingBuilds",
+    "java.configuration.updateBuildConfiguration": "interactive"
 }
