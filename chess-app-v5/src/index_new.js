@@ -541,6 +541,11 @@ async function getGameInfo(playerID, request, GAME_ROOM, DB) {
     }
 
     const activeGames = String(result.results[0].active_games);
+
+    if (activeGames === "null") {
+        return createResponse({ games: [] });
+    }
+
     const gameIDs = activeGames ? activeGames.split(',') : [];
 
     const gamesInfo = await Promise.all(
