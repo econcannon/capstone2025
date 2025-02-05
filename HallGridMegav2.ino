@@ -18,7 +18,7 @@ const int colFive = A5;
 const int colSix = A6;
 const int colSeven = A7;
 
-const int lowerThresh = 450;
+const int lowerThresh = 400;
 const int upperThresh = 550; 
 
 void setup() {
@@ -74,7 +74,7 @@ float readCol(int value) {
     //Serial.println("Reading:");
     float val = -1;  // Default value in case of error
     analogRead(A8);
-    delayMicroseconds(50);
+    delayMicroseconds(5);
     switch (value) {
         case 0: val = analogRead(colZero); break;
         case 1: val = analogRead(colOne); break;
@@ -105,7 +105,7 @@ void loop() {
             //Serial.print(i);   
             //Serial.print(" j: ");
             //Serial.println(j);
-            delay(50);
+            delay(5);
             sensorValue = readCol(j);  // Read sensor
             //Serial.println(sensorValue);
            
@@ -118,15 +118,26 @@ void loop() {
                 Serial.print(" Val: ");
                 Serial.println(sensorValue);
             }
-            
+            else if (sensorValue < lowerThresh & sensorValue >= 100) {
+                Serial.print("White piece detected at: (");
+                Serial.print(i);
+                Serial.print(", ");
+                Serial.print(j);
+                Serial.print(")");
+                Serial.print(" Val: ");
+                Serial.println(sensorValue);
+            }
+
             else {
-                //Serial.println("Nothing");
+                //Serial.print("Nothing - ");
 
                 //Serial.print("Nothing at (");
                 //Serial.print(i);
                 //Serial.print(", ");
                 //Serial.print(j);
                 //Serial.println(")");
+                //Serial.print(" Val: ");
+                //Serial.println(sensorValue);
             }
             
             
@@ -135,5 +146,5 @@ void loop() {
         //Serial.println("for loop done");
     }
 
-    delay(10);  // Small delay for stability
+    //delay(10);  // Small delay for stability
 }
