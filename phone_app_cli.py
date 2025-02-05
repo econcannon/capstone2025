@@ -473,7 +473,7 @@ class ChessAppCLI:
         if games:
             print("\n--- Ongoing Games ---")
             for idx, game in enumerate(games):
-                print(f"{idx + 1}. Game ID: {game['gameID']}, Opponent: {game['players']}, Turn: {game['turn']}")
+                print(f"{idx + 1}. Game ID: {game['gameID']}, oOpponent: {game['players']}, Turn: {game['turn']}")
 
             game_choice = input("\nSelect a game to send to the board (Enter number): ")
             

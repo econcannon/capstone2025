@@ -4,7 +4,8 @@ import 'dart:convert';
 import 'main.dart';
 import 'chess.dart';
 
-
+List<Map<String, dynamic>> games = [];
+List<Map<String, dynamic>> get list_of_ongoing_games => games;
 
 class ViewOngoingGame extends StatefulWidget {
   final String playerId;
@@ -16,8 +17,6 @@ class ViewOngoingGame extends StatefulWidget {
 }
 
 class _ViewOngoingGameState extends State<ViewOngoingGame> {
-  List<Map<String, dynamic>> _games = [];
-
   @override
   void initState() {
     super.initState();
@@ -33,7 +32,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
         final data = json.decode(response.body);
         if (data != null && data['games'] != null) {
           setState(() {
-            _games = List<Map<String, dynamic>>.from(data['games']);
+            games = List<Map<String, dynamic>>.from(data['games']);
           });
         }
       } else {
@@ -53,7 +52,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
       if (response.statusCode == 200) {
         print("All games deleted successfully.");
         setState(() {
-          _games.clear(); 
+          games.clear();
         });
       } else {
         print("Failed to delete all games.");
@@ -73,7 +72,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
         print("Game deleted successfully.");
 
         setState(() {
-          _games.removeWhere((game) => game['gameID'] == gameID);
+          games.removeWhere((game) => game['gameID'] == gameID);
         });
       } else {
         print("Failed to delete game.");
@@ -95,12 +94,12 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
           ),
         ],
       ),
-      body: _games.isEmpty
+      body: games.isEmpty
           ? const Center(child: Text('No ongoing games found.'))
           : ListView.builder(
-              itemCount: _games.length,
+              itemCount: games.length,
               itemBuilder: (context, index) {
-                final game = _games[index];
+                final game = games[index];
                 return Card(
                   margin: const EdgeInsets.all(8.0),
                   elevation: 4.0,
@@ -120,6 +119,8 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
                             onPressed: () => _deleteGame(game['gameID']),
                             child: const Text('Delete Game'),
                           ),
+                          
+                          
                         ),
                       ],
                     ),

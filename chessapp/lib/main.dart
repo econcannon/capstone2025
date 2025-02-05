@@ -5,7 +5,6 @@ import 'manage_game.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'constants.dart';
-import 'package:chessapp/Screens/Welcome/welcome_screen.dart';
 
 String SSID_CHAR_UUID = "8266532f-1fe1-4af9-97e1-3b7c04ef8201";
 String PASSWORD_CHAR_UUID = "91abf729-1b45-4147-b8f7-b93620e8bce1";
@@ -65,45 +64,6 @@ class MyApp extends StatelessWidget {
 }
 
 void main() => runApp(const MyApp());
-
-// class MyApp extends StatelessWidget {
-//   const MyApp({Key? key}) : super(key: key);
-
-//   // This widget is the root of your application.
-//   @override
-//   Widget build(BuildContext context) {
-//     return MaterialApp(
-//       debugShowCheckedModeBanner: false,
-//       title: 'Flutter Auth',
-//       theme: ThemeData(
-//           primaryColor: kPrimaryColor,
-//           scaffoldBackgroundColor: Colors.white,
-//           elevatedButtonTheme: ElevatedButtonThemeData(
-//             style: ElevatedButton.styleFrom(
-//               elevation: 0,
-//               foregroundColor: Colors.white,
-//               backgroundColor: kPrimaryColor,
-//               shape: const StadiumBorder(),
-//               maximumSize: const Size(double.infinity, 56),
-//               minimumSize: const Size(double.infinity, 56),
-//             ),
-//           ),
-//           inputDecorationTheme: const InputDecorationTheme(
-//             filled: true,
-//             fillColor: kPrimaryLightColor,
-//             iconColor: kPrimaryColor,
-//             prefixIconColor: kPrimaryColor,
-//             contentPadding: EdgeInsets.symmetric(
-//                 horizontal: defaultPadding, vertical: defaultPadding),
-//             border: OutlineInputBorder(
-//               borderRadius: BorderRadius.all(Radius.circular(30)),
-//               borderSide: BorderSide.none,
-//             ),
-//           )),
-//       home: const WelcomeScreen(),
-//     );
-//   }
-// }
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
