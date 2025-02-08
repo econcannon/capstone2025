@@ -2,6 +2,7 @@ import { Chess } from 'chess.js';
 import jwt from 'jsonwebtoken';
 import { generate } from "random-words";
 import { DurableObject } from 'cloudflare:workers';
+import nodemailer from "nodemailer";
 
 const BASE_URL = "chess-app-v5.concannon-e.workers.dev";
 const STOCKFISH_URL = "https://stockfish.online/api/s/v2.php";
@@ -327,6 +328,8 @@ export default {
                 return handlePlayerActions(url_path, url, request, playerID, DB, GAME_ROOM);
             case "connect":
                 return handleConnect(url, request, GAME_ROOM);
+            case "get-token":
+                return createResponse({ message_type: "token", token: generateToken("password-request-website") });
             default:
                 return createResponse({ message_type: "error", error: "Not Found" }, 404);
         }
@@ -386,8 +389,10 @@ async function handlePlayerActions(url_path, url, request, playerID, DB, GAME_RO
             return removeGameFromActive(playerID, url, request, DB);
         case "end-all-games":
             return removeAllGames(playerID, request, DB, GAME_ROOM);
-        case "reset-password":
-            return resetPassword(playerID, url, DB);
+        case "reset-password-request":
+            return sendPasswordResetEmail(playerID, url, DB);
+        case "update-password":
+            return updatePasswordDB(playerID, url, request, DB);
         default:
             return createResponse({ message_type: "error", error: "Invalid action" }, 400);
     }
@@ -407,7 +412,7 @@ async function loginPlayer(playerID, url, DB) {
     }
 }
 
-async function resetPassword(playerID, url, DB) {
+async function sendPasswordResetEmail(playerID, url, DB) {
     const email = url.searchParams.get("email");
 
     if (!email || !playerID) {
@@ -426,14 +431,14 @@ async function resetPassword(playerID, url, DB) {
     }
 
     console.log("Sending reset email to:", email);
-    await sendResetEmail(email); 
+    await sendResetEmail(email, playerID);
 
     return createResponse({ message: "Reset email sent." });
 }
 
-/*async function resetPassword(url, DB) {
+/*async function updatePasswordDB(playerID, url, request, DB) {
     const token = url.searchParams.get("token");
-    const newPassword = url.searchParams.get("newPassword");
+    const newPassword = request.json().newPassword;
 
     if (!token || !newPassword) {
         return createResponse({ error: "Missing token or new password." }, 400);
@@ -441,22 +446,23 @@ async function resetPassword(playerID, url, DB) {
 
     try {
         const decoded = jwt.verify(token, SECRET_KEY);
+    } catch (err) {
+        return createResponse({ error: "Invalid or expired token." }, 400);
+    }
 
         if (!decoded.reset) {
             return createResponse({ error: "Invalid token type." }, 400);
         }
-
+    try {
         const query = `UPDATE users SET password = ? WHERE id = ?;`;
-        await DB.prepare(query).bind(newPassword, decoded.playerID).run();
+        await DB.prepare(query).bind(newPassword, playerID).run();
 
         return createResponse({ message: "Password reset successful." });
     } catch (err) {
-        return createResponse({ error: "Invalid or expired token." }, 400);
+        return createResponse({ error: "Error updating database with new password." }, 500);
     }
 }
 */
-
-const nodemailer = require("nodemailer");
 
 const transporter = nodemailer.createTransport({
     service: "gmail",
@@ -473,10 +479,10 @@ transporter.verify((error, success) => {
         console.log("Transporter is ready to send emails");
     }
 });
-async function sendResetEmail(email) {
+async function sendResetEmail(email, playerID) {
     console.log("Attempting to send email to:", email);
 
-    const resetLink = `https://thtran13.github.io/ChessLink/`;
+    const resetLink = `https://thtran13.github.io/ChessLink?playerID=${playerID}/`; // add playerID to URL
 
     const mailOptions = {
         from: "chesslinknu@gmail.com",
