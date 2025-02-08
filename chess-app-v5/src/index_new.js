@@ -16,6 +16,16 @@ function createResponse(body, status = 200) {
     });
 }
 
+// Utility function to safely parse CSV strings into an array
+function parseCSV(csvString) {
+    return csvString ? csvString.split(',').filter(Boolean) : [];
+}
+
+// Utility function to convert an array into a CSV string
+function toCSV(array) {
+    return array.length > 0 ? array.join(',') : null;
+}
+
 
 function standardGameInfo(game, playerID, players_color, players, message_type = "game-state") {
     const color = (players_color.white === playerID) ? "white" : "black";
@@ -56,7 +66,7 @@ export class ChessGame extends DurableObject {
         console.log("New Durable Object instance created");
         this.storage = ctx.storage;
         this.game = null;
-        this.players = [];
+        this.players = new Set();
         this.players_color = { white: null, black: null };
         this.gameID = null;
         this.depth = 10;
@@ -75,7 +85,7 @@ export class ChessGame extends DurableObject {
 
         this.game = storedState ? new Chess(storedState) : new Chess();
         this.players_color = storedPlayersColor || { white: null, black: null };
-        this.players = storedPlayers || [];
+        this.players = storedPlayers || new Set();
         this.ai = storedAi || false;
         this.depth = storedDepth || 10;
         console.log("initializing game state ai: " + this.ai.toString() + " players: " + this.players.toString() + " colors: " + JSON.stringify(this.players_color));
@@ -100,6 +110,8 @@ export class ChessGame extends DurableObject {
                 return this.handleJoinGame(playerID, ai, depth);
             case "/game-info":
                 return createResponse(standardGameInfo(this.game, playerID, this.players_color, this.players));
+            case "/update-game-info":
+                return this.handleUpdateGame(request);
             default:
                 return createResponse({ error: "Not Found" }, 404);
         }
@@ -112,11 +124,11 @@ export class ChessGame extends DurableObject {
             if (this.players.length >= 2) {
                 return createResponse({message_type: "error", error: "Game is full. Cannot join." }, 403);
             }
-            if (!this.players.includes(playerID)) {
-                this.players.push(playerID);
+            if (!this.players.has(playerID)) {
+                this.players.add(playerID);
                 if (ai && this.players.length === 1) {
                     console.log("Entered here: " + ai.toString());
-                    this.players.push("AI");
+                    this.players.add("AI");
                     await this.storage.put("ai", true);
                     await this.storage.put("depth", depth);
                     this.ai = true;
@@ -125,7 +137,7 @@ export class ChessGame extends DurableObject {
                     await this.storage.put("ai", false);
                 }
                 await this.storage.put("players", this.players);
-                console.log("Entered players: " + this.players.toString());
+                console.log("Entered players: " + Array.from(this.players).toString());
             }
             else {
                 return createResponse({message_type: "error", error: "You are already in this game!" }, 403);
@@ -137,6 +149,41 @@ export class ChessGame extends DurableObject {
         }
 
     }
+
+
+    async handleUpdateGame(request) {
+        try {
+            const data = await request.json();
+
+            if (data.message_type === "player-leaving") {
+                const playerID = data.playerLeaving;
+
+                if (!this.players.has(playerID)) {
+                    return new Response(JSON.stringify({ success: false, message: "Player not in game." }), { status: 400 });
+                }
+
+                // // Remove the player from the game state
+                // this.players.delete(playerID);
+
+                // Broadcast the update to all remaining players
+                const message = {
+                    message_type: "player-left",
+                    playerLeaving: playerID,
+                };
+
+                await this.sendToOpponent(message);
+                await this.handleGameOver();
+
+                return new Response(JSON.stringify({ success: true, message: "Player removed from game." }));
+            }
+
+            return new Response(JSON.stringify({ success: false, message: "Invalid message type." }), { status: 400 });
+        } catch (error) {
+            console.error("Error handling game update:", error);
+            return new Response(JSON.stringify({ error: "Failed to update game." }), { status: 500 });
+        }
+    }
+
 
     async handleWebSocket(request) {
         const url = new URL(request.url);
@@ -264,6 +311,19 @@ export class ChessGame extends DurableObject {
         }
     } 
     
+    async getWebSocketFromPlayerID(playerID) {
+        const playerSocket = this.ctx.getWebSockets().find((ws) => {
+            const attachment = ws.serialized; // Extract serialized attachment
+            return attachment && attachment.playerID === playerID;
+        });
+    
+        if (playerSocket) {
+            return playerSocket;
+        } else {
+            console.log(`No active WebSocket connection found for playerID: ${playerID}`);
+            return null;
+        }
+    }
 
     // Function to generate the payload to be sent to the opponent
     generateMovePayload(game, senderID, playersColor, players, moveResult) {
@@ -383,9 +443,17 @@ async function handlePlayerActions(url_path, url, request, playerID, DB, GAME_RO
         case "register":
             return registerPlayer(playerID, url, DB);
         case "end-game":
-            return removeGameFromActive(playerID, url, request, DB);
+            return removeGameFromActive(playerID, url, request, DB, GAME_ROOM);
         case "end-all-games":
             return removeAllGames(playerID, request, DB, GAME_ROOM);
+        case "friends":
+            return getFriends(playerID, DB);
+        case "see-friend-requests":
+            return seeFriendRquests(playerID, DB);
+        case "send-friend-request":
+            return sendFriendRequest(playerID, url, DB);
+        case "accept-friend-request":
+            return acceptFriendRequest(playerID, url, DB);
         default:
             return createResponse({message_type: "error", error: "Invalid action" }, 400);
     }
@@ -427,77 +495,111 @@ async function joinGame(playerID, url, request, GAME_ROOM, DB) {
 
 
 async function insertNewGame(playerID, gameID, DB) {
-    const query = `
-        UPDATE users
-        SET active_games = 
-            COALESCE(active_games || ',', '') || ?
-        WHERE id = ?;
-    `;
     try {
-        const result = await DB.prepare(query).bind(gameID, playerID).run();
-        return result.success;
-    } catch (error) {
-        console.error("Error inserting new game:", error);
-        return false;
-    }
-}
+        // Fetch current active games
+        const query = `SELECT active_games FROM users WHERE id = ?`;
+        const result = await DB.prepare(query).bind(playerID).get();
+        let activeGames = parseCSV(result?.active_games);
 
-
-async function removeGameFromActive(playerID, url, request, DB) {
-    if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
-
-    const gameID = url.searchParams.get("gameID");
-    const query = `
-        UPDATE users
-        SET active_games = 
-            CASE 
-                WHEN REPLACE(',' || active_games || ',', ',' || ? || ',', ',') = ',' THEN NULL
-                ELSE SUBSTR(
-                    REPLACE(',' || active_games || ',', ',' || ? || ',', ','),
-                    2,
-                    LENGTH(REPLACE(',' || active_games || ',', ',' || ? || ',', ',')) - 2
-                )
-            END
-        WHERE id = ?;
-    `;
-
-    try {
-        await DB.prepare(query).bind(gameID, gameID, gameID, playerID).run();
-        return createResponse();
-    } catch (error) {
-        console.error("Error removing game from active games:", error);
-        return false;
-    }
-}
-
-
-// add fetch response for durable object
-async function removeAllGames(playerID, request, DB, GAME_ROOM) {
-    if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
-
-    // Step 1: Fetch all active games for the player
-    const query = `
-        SELECT active_games 
-        FROM users 
-        WHERE id = ?;
-    `;
-
-    try {
-        const result = await DB.prepare(query).bind(playerID).first();
-        if (!result || !result.active_games) {
-            console.log(`No active games found for player: ${playerID}`);
-            return createResponse();
+        // Prevent duplicate game entries
+        if (activeGames.includes(gameID)) {
+            return createResponse({ success: false, message: "Game already exists in active games." }, 400);
         }
 
-        const activeGames = result.active_games.split(','); // Assuming comma-separated game IDs
+        // Add new game to list
+        activeGames.push(gameID);
 
-        // Step 2: Iterate through each game and update its Durable Object storage
+        // Update the database
+        const updateQuery = `UPDATE users SET active_games = ? WHERE id = ?`;
+        await DB.prepare(updateQuery).bind(toCSV(activeGames), playerID).run();
+
+        return createResponse({ success: true, message: "Game added to active games." });
+    } catch (error) {
+        console.error("Error inserting new game:", error);
+        return createResponse({ error: "Failed to insert new game." }, 500);
+    }
+}
+
+
+async function removeGameFromActive(playerID, url, request, DB, GAME_ROOM) {
+    if (!verifyToken(request)) 
+        return createResponse({ message_type: "error", error: "Authentication Failed" }, 403);
+
+    const gameID = url.searchParams.get("gameID");
+    if (!gameID) 
+        return createResponse({ message_type: "error", error: "Missing gameID parameter" }, 400);
+
+    try {
+        // Step 1: Fetch current active games
+        const query = `SELECT active_games FROM users WHERE id = ?`;
+        const result = await DB.prepare(query).bind(playerID).run();
+        console.log("result" + JSON.stringify(result));
+        let activeGames = parseCSV(result?.results[0]?.active_games);
+        console.log("activeGames"+ activeGames.toString());
+
+        // Step 2: Check if the game exists in the list
+        if (!activeGames.includes(gameID)) {
+            return createResponse({ success: false, message: "Game not found in active games." }, 404);
+        }
+
+        // Step 3: Remove the game from the list
+        activeGames = activeGames.filter(id => id !== gameID);
+        const updatedGames = toCSV(activeGames); // Convert back to CSV string
+
+        // Step 4: Update the database
+        const updateQuery = `UPDATE users SET active_games = ? WHERE id = ?`;
+        await DB.prepare(updateQuery).bind(updatedGames, playerID).run();
+
+        // Step 5: Notify the Durable Object about player leaving
+        const gameRoomId = GAME_ROOM.idFromName(gameID);
+        const gameRoom = GAME_ROOM.get(gameRoomId);
+
+        try {
+            const response = await gameRoom.fetch("https://" + BASE_URL + "/update-game-info", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    playerLeaving: playerID,
+                }),
+            });
+
+            if (!response.ok) {
+                console.error(`Failed to update game status for gameID: ${gameID}`);
+            }
+        } catch (error) {
+            console.error(`Error communicating with Durable Object for gameID: ${gameID}`, error);
+        }
+
+        return createResponse({ success: true, message: "Game removed from active games." });
+    } catch (error) {
+        console.error("Error removing game from active games:", error);
+        return createResponse({ error: "Failed to remove game." }, 500);
+    }
+}
+
+
+async function removeAllGames(playerID, request, DB, GAME_ROOM) {
+    if (!verifyToken(request)) 
+        return createResponse({ message_type: "error", error: "Authentication Failed" }, 403);
+
+    try {
+        // Step 1: Fetch all active games for the player
+        const query = `SELECT active_games FROM users WHERE id = ?`;
+        const result = await DB.prepare(query).bind(playerID).get();
+        let activeGames = parseCSV(result?.active_games);
+
+        if (activeGames.length === 0) {
+            console.log(`No active games found for player: ${playerID}`);
+            return createResponse({ success: true, message: "No active games to remove." });
+        }
+
+        // Step 2: Notify each game’s Durable Object
         for (const gameID of activeGames) {
             const gameRoomId = GAME_ROOM.idFromName(gameID);
             const gameRoom = GAME_ROOM.get(gameRoomId);
 
             try {
-                const response = await gameRoom.fetch("https://" + BASE_URL + "/update-game-status", {
+                const response = await gameRoom.fetch("https://" + BASE_URL + "/update-game-info", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -514,17 +616,13 @@ async function removeAllGames(playerID, request, DB, GAME_ROOM) {
         }
 
         // Step 3: Remove all active games for the player in the database
-        const updateQuery = `
-            UPDATE users
-            SET active_games = NULL 
-            WHERE id = ?;
-        `;
+        const updateQuery = `UPDATE users SET active_games = NULL WHERE id = ?`;
         await DB.prepare(updateQuery).bind(playerID).run();
 
-        return createResponse();
+        return createResponse({ success: true, message: "All active games removed." });
     } catch (error) {
-        console.error("Error removing games from active games:", error);
-        return false;
+        console.error("Error removing all active games:", error);
+        return createResponse({ error: "Failed to remove all games." }, 500);
     }
 }
 
@@ -599,3 +697,110 @@ async function registerPlayer(playerID, url, DB) {
         }, 500);
     }
 }
+
+// Retrieve list of friends
+async function getFriends(playerID, DB) {
+    const query = `SELECT friends FROM players WHERE id = ?`;
+    try {
+        const result = await DB.prepare(query).bind(playerID).get();
+        return createResponse({ friends: parseCSV(result?.friends) });
+    } catch (error) {
+        console.error("Error retrieving friends:", error);
+        return createResponse({ error: "Failed to retrieve friends" }, 500);
+    }
+}
+
+// Retrieve both incoming and outgoing friend requests
+async function seeFriendRequests(playerID, DB) {
+    const query = `SELECT incoming_requests, outgoing_requests FROM players WHERE id = ?`;
+    try {
+        const result = await DB.prepare(query).bind(playerID).get();
+        return createResponse({
+            incoming_requests: parseCSV(result?.incoming_requests),
+            outgoing_requests: parseCSV(result?.outgoing_requests)
+        });
+    } catch (error) {
+        console.error("Error retrieving friend requests:", error);
+        return createResponse({ error: "Failed to retrieve friend requests" }, 500);
+    }
+}
+
+// Send a friend request
+async function sendFriendRequest(playerID, friendID, DB) {
+    try {
+        // Fetch outgoing requests for sender
+        let query = `SELECT outgoing_requests FROM players WHERE id = ?`;
+        let sender = await DB.prepare(query).bind(playerID).get();
+        let outgoingRequests = parseCSV(sender?.outgoing_requests);
+
+        // Fetch incoming requests for receiver
+        query = `SELECT incoming_requests FROM players WHERE id = ?`;
+        let receiver = await DB.prepare(query).bind(friendID).get();
+        let incomingRequests = parseCSV(receiver?.incoming_requests);
+
+        // Prevent duplicate requests
+        if (outgoingRequests.includes(friendID) || incomingRequests.includes(playerID)) {
+            return createResponse({ success: false, message: "Friend request already sent or received." }, 400);
+        }
+
+        outgoingRequests.push(friendID);
+        incomingRequests.push(playerID);
+
+        // Update sender's outgoing requests
+        query = `UPDATE players SET outgoing_requests = ? WHERE id = ?`;
+        await DB.prepare(query).bind(toCSV(outgoingRequests), playerID).run();
+
+        // Update receiver's incoming requests
+        query = `UPDATE players SET incoming_requests = ? WHERE id = ?`;
+        await DB.prepare(query).bind(toCSV(incomingRequests), friendID).run();
+
+        return createResponse({ success: true, message: "Friend request sent." });
+    } catch (error) {
+        console.error("Error sending friend request:", error);
+        return createResponse({ error: "Failed to send friend request" }, 500);
+    }
+}
+
+// Accept a friend request
+async function acceptFriendRequest(playerID, friendID, DB) {
+    try {
+        // Fetch incoming requests and friends for accepting player
+        let query = `SELECT incoming_requests, friends FROM players WHERE id = ?`;
+        let player = await DB.prepare(query).bind(playerID).get();
+        let incomingRequests = parseCSV(player?.incoming_requests);
+        let friends = parseCSV(player?.friends);
+
+        // Fetch outgoing requests and friends for sender
+        query = `SELECT outgoing_requests, friends FROM players WHERE id = ?`;
+        let friend = await DB.prepare(query).bind(friendID).get();
+        let outgoingRequests = parseCSV(friend?.outgoing_requests);
+        let friendFriends = parseCSV(friend?.friends);
+
+        // Verify request exists
+        if (!incomingRequests.includes(friendID)) {
+            return createResponse({ success: false, message: "No pending friend request from this user." }, 400);
+        }
+
+        // Remove from requests
+        incomingRequests = incomingRequests.filter(id => id !== friendID);
+        outgoingRequests = outgoingRequests.filter(id => id !== playerID);
+
+        // Add to friends list
+        if (!friends.includes(friendID)) friends.push(friendID);
+        if (!friendFriends.includes(playerID)) friendFriends.push(playerID);
+
+        // Update accepting player's records
+        query = `UPDATE players SET incoming_requests = ?, friends = ? WHERE id = ?`;
+        await DB.prepare(query).bind(toCSV(incomingRequests), toCSV(friends), playerID).run();
+
+        // Update sender's records
+        query = `UPDATE players SET outgoing_requests = ?, friends = ? WHERE id = ?`;
+        await DB.prepare(query).bind(toCSV(outgoingRequests), toCSV(friendFriends), friendID).run();
+
+        return createResponse({ success: true, message: "Friend request accepted." });
+    } catch (error) {
+        console.error("Error accepting friend request:", error);
+        return createResponse({ error: "Failed to accept friend request" }, 500);
+    }
+}
+
