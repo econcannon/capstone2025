@@ -159,6 +159,7 @@ class _GamePage extends State<GamePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            Text('Game ID: $GAMEID'),
             Padding(
               padding: const EdgeInsets.all(4.0),
               child: BoardController(
