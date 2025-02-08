@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'main.dart';
 import 'chess.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class EnterWifiInfoPage extends StatefulWidget {
   final Function(String ssid, String password) onWifiInfoSubmitted;
@@ -74,7 +75,7 @@ class ViewOngoingGame extends StatefulWidget {
 class _ViewOngoingGameState extends State<ViewOngoingGame> {
   FlutterBluePlus flutterBlue = FlutterBluePlus();
   bool isBluetoothConnected = false;
-  late BluetoothDevice _connectedDevice;
+  BluetoothDevice? _connectedDevice;
 
   String SSID_CHAR_UUID = "8266532f-1fe1-4af9-97e1-3b7c04ef8201";
   String PASSWORD_CHAR_UUID = "91abf729-1b45-4147-b8f7-b93620e8bce1";
@@ -127,6 +128,8 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
         });
       } else {
         print("Failed to delete game.");
+        print(response.statusCode);
+        print(response.body);
       }
     } catch (e) {
       print("Error deleting game: $e");
@@ -149,6 +152,16 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
       }
     } catch (e) {
       print("Error deleting all games: $e");
+    }
+  }
+
+  Future<void> requestBluetoothPermissions() async {
+    if (await Permission.bluetoothScan.isDenied ||
+        await Permission.bluetoothConnect.isDenied) {
+      await [
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+      ].request();
     }
   }
 
