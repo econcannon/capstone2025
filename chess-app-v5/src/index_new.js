@@ -498,7 +498,7 @@ async function insertNewGame(playerID, gameID, DB) {
     try {
         // Fetch current active games
         const query = `SELECT active_games FROM users WHERE id = ?`;
-        const result = await DB.prepare(query).bind(playerID).get();
+        const result = await DB.prepare(query).bind(playerID).run();
         let activeGames = parseCSV(result?.active_games);
 
         // Prevent duplicate game entries
@@ -585,7 +585,7 @@ async function removeAllGames(playerID, request, DB, GAME_ROOM) {
     try {
         // Step 1: Fetch all active games for the player
         const query = `SELECT active_games FROM users WHERE id = ?`;
-        const result = await DB.prepare(query).bind(playerID).get();
+        const result = await DB.prepare(query).bind(playerID).run();
         let activeGames = parseCSV(result?.active_games);
 
         if (activeGames.length === 0) {
@@ -702,7 +702,7 @@ async function registerPlayer(playerID, url, DB) {
 async function getFriends(playerID, DB) {
     const query = `SELECT friends FROM players WHERE id = ?`;
     try {
-        const result = await DB.prepare(query).bind(playerID).get();
+        const result = await DB.prepare(query).bind(playerID).run();
         return createResponse({ friends: parseCSV(result?.friends) });
     } catch (error) {
         console.error("Error retrieving friends:", error);
@@ -714,7 +714,7 @@ async function getFriends(playerID, DB) {
 async function seeFriendRequests(playerID, DB) {
     const query = `SELECT incoming_requests, outgoing_requests FROM players WHERE id = ?`;
     try {
-        const result = await DB.prepare(query).bind(playerID).get();
+        const result = await DB.prepare(query).bind(playerID).run();
         return createResponse({
             incoming_requests: parseCSV(result?.incoming_requests),
             outgoing_requests: parseCSV(result?.outgoing_requests)
@@ -730,12 +730,12 @@ async function sendFriendRequest(playerID, friendID, DB) {
     try {
         // Fetch outgoing requests for sender
         let query = `SELECT outgoing_requests FROM players WHERE id = ?`;
-        let sender = await DB.prepare(query).bind(playerID).get();
+        let sender = await DB.prepare(query).bind(playerID).run();
         let outgoingRequests = parseCSV(sender?.outgoing_requests);
 
         // Fetch incoming requests for receiver
         query = `SELECT incoming_requests FROM players WHERE id = ?`;
-        let receiver = await DB.prepare(query).bind(friendID).get();
+        let receiver = await DB.prepare(query).bind(friendID).run();
         let incomingRequests = parseCSV(receiver?.incoming_requests);
 
         // Prevent duplicate requests
@@ -766,13 +766,13 @@ async function acceptFriendRequest(playerID, friendID, DB) {
     try {
         // Fetch incoming requests and friends for accepting player
         let query = `SELECT incoming_requests, friends FROM players WHERE id = ?`;
-        let player = await DB.prepare(query).bind(playerID).get();
+        let player = await DB.prepare(query).bind(playerID).run();
         let incomingRequests = parseCSV(player?.incoming_requests);
         let friends = parseCSV(player?.friends);
 
         // Fetch outgoing requests and friends for sender
         query = `SELECT outgoing_requests, friends FROM players WHERE id = ?`;
-        let friend = await DB.prepare(query).bind(friendID).get();
+        let friend = await DB.prepare(query).bind(friendID).run();
         let outgoingRequests = parseCSV(friend?.outgoing_requests);
         let friendFriends = parseCSV(friend?.friends);
 
