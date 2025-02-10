@@ -75,12 +75,13 @@ export class ChessGame extends DurableObject {
     }
 
     async initializeGameState() {
-        const [storedState, storedPlayers, storedPlayersColor, storedAi, storedDepth] = await Promise.all([
+        const [storedState, storedPlayers, storedPlayersColor, storedAi, storedDepth, storedGameID] = await Promise.all([
             this.storage.get("gameState"),
             this.storage.get("players"),
             this.storage.get("players_color"),
             this.storage.get("ai"),
             this.storage.get("depth"),
+            this.storage.get("gameID")
         ]);
 
         this.game = storedState ? new Chess(storedState) : new Chess();
@@ -88,6 +89,7 @@ export class ChessGame extends DurableObject {
         this.players = storedPlayers || new Set();
         this.ai = storedAi || false;
         this.depth = storedDepth || 10;
+        this.gameID = storedGameID || null;
         console.log("initializing game state ai: " + this.ai.toString() + " players: " + this.players.toString() + " colors: " + JSON.stringify(this.players_color));
     }
 
@@ -97,6 +99,7 @@ export class ChessGame extends DurableObject {
         
         if (!this.gameID) {
             this.gameID = url.searchParams.get("gameID");
+            this.storage.put("gameID", this.gameID);
         }
 
         if (url.pathname === "/connect" && request.headers.get("Upgrade") === "websocket") {
