@@ -3,6 +3,8 @@ name = "chess-app-v5"
 main = "src/index_new.js"
 compatibility_date = "2024-12-20"
 
+compatibility_flags = ["nodejs_compat"]
+
 [[durable_objects.bindings]]
 name = "GAME_ROOM"
 class_name = "ChessGame"
