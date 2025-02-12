@@ -396,9 +396,9 @@ export default {
     }
 };
 
-async function handleGameCreation(playerID, url, request, GAME_ROOM, DB) {
+async function handleGameCreation(playerID, url, request, GAME_ROOM, DB, origin = 1) {
     if (!playerID) return createResponse({message_type: "error", error: "Player ID required." }, 400);
-    if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
+    if (!verifyToken(request) && origin) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
 
     const max = 999999999;
     const min = 0;
@@ -454,11 +454,15 @@ async function handlePlayerActions(url_path, url, request, playerID, DB, GAME_RO
         case "friends":
             return getFriends(playerID, DB);
         case "see-friend-requests":
-            return seeFriendRquests(playerID, DB);
+            return seeFriendRequests(playerID, DB);
         case "send-friend-request":
             return sendFriendRequest(playerID, url, DB);
         case "accept-friend-request":
             return acceptFriendRequest(playerID, url, DB);
+        case "challenge-friend":
+            return challengeFriend(playerID, url, DB);
+        case "accept-challenge":
+            return acceptChallenge(playerID, url, DB, GAME_ROOM);
         default:
             return createResponse({message_type: "error", error: "Invalid action" }, 400);
     }
@@ -479,10 +483,11 @@ async function loginPlayer(playerID, url, DB) {
 }
 
 
-async function joinGame(playerID, url, request, GAME_ROOM, DB) {
-    if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
+async function joinGame(playerID, url, request, GAME_ROOM, DB, origin = 1, gameID = null) {
+    if (!verifyToken(request) && origin) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
 
-    const gameID = url.searchParams.get("gameID");
+    if (!origin) gameID = url.searchParams.get("gameID");
+
     const gameRoom = GAME_ROOM.get(GAME_ROOM.idFromName(gameID));
     const response = await gameRoom.fetch(
         new URL("/join-game?playerID=" + playerID + "&ai=false", url.origin)
@@ -705,7 +710,7 @@ async function registerPlayer(playerID, url, DB) {
 
 // Retrieve list of friends
 async function getFriends(playerID, DB) {
-    const query = `SELECT friends FROM players WHERE id = ?`;
+    const query = `SELECT friends FROM users WHERE id = ?`;
     try {
         const result = await DB.prepare(query).bind(playerID).run();
         return createResponse({ friends: parseCSV(result?.friends) });
@@ -717,7 +722,7 @@ async function getFriends(playerID, DB) {
 
 // Retrieve both incoming and outgoing friend requests
 async function seeFriendRequests(playerID, DB) {
-    const query = `SELECT incoming_requests, outgoing_requests FROM players WHERE id = ?`;
+    const query = `SELECT incoming_requests, outgoing_requests FROM users WHERE id = ?`;
     try {
         const result = await DB.prepare(query).bind(playerID).run();
         return createResponse({
@@ -734,12 +739,12 @@ async function seeFriendRequests(playerID, DB) {
 async function sendFriendRequest(playerID, friendID, DB) {
     try {
         // Fetch outgoing requests for sender
-        let query = `SELECT outgoing_requests FROM players WHERE id = ?`;
+        let query = `SELECT outgoing_requests FROM users WHERE id = ?`;
         let sender = await DB.prepare(query).bind(playerID).run();
         let outgoingRequests = parseCSV(sender?.outgoing_requests);
 
         // Fetch incoming requests for receiver
-        query = `SELECT incoming_requests FROM players WHERE id = ?`;
+        query = `SELECT incoming_requests FROM users WHERE id = ?`;
         let receiver = await DB.prepare(query).bind(friendID).run();
         let incomingRequests = parseCSV(receiver?.incoming_requests);
 
@@ -752,11 +757,11 @@ async function sendFriendRequest(playerID, friendID, DB) {
         incomingRequests.push(playerID);
 
         // Update sender's outgoing requests
-        query = `UPDATE players SET outgoing_requests = ? WHERE id = ?`;
+        query = `UPDATE users SET outgoing_requests = ? WHERE id = ?`;
         await DB.prepare(query).bind(toCSV(outgoingRequests), playerID).run();
 
         // Update receiver's incoming requests
-        query = `UPDATE players SET incoming_requests = ? WHERE id = ?`;
+        query = `UPDATE users SET incoming_requests = ? WHERE id = ?`;
         await DB.prepare(query).bind(toCSV(incomingRequests), friendID).run();
 
         return createResponse({ success: true, message: "Friend request sent." });
@@ -770,13 +775,13 @@ async function sendFriendRequest(playerID, friendID, DB) {
 async function acceptFriendRequest(playerID, friendID, DB) {
     try {
         // Fetch incoming requests and friends for accepting player
-        let query = `SELECT incoming_requests, friends FROM players WHERE id = ?`;
+        let query = `SELECT incoming_requests, friends FROM users WHERE id = ?`;
         let player = await DB.prepare(query).bind(playerID).run();
         let incomingRequests = parseCSV(player?.incoming_requests);
         let friends = parseCSV(player?.friends);
 
         // Fetch outgoing requests and friends for sender
-        query = `SELECT outgoing_requests, friends FROM players WHERE id = ?`;
+        query = `SELECT outgoing_requests, friends FROM users WHERE id = ?`;
         let friend = await DB.prepare(query).bind(friendID).run();
         let outgoingRequests = parseCSV(friend?.outgoing_requests);
         let friendFriends = parseCSV(friend?.friends);
@@ -784,6 +789,10 @@ async function acceptFriendRequest(playerID, friendID, DB) {
         // Verify request exists
         if (!incomingRequests.includes(friendID)) {
             return createResponse({ success: false, message: "No pending friend request from this user." }, 400);
+        }
+        // Verify request exists
+        if (!outgoingRequests.includes(friendID)) {
+            return createResponse({ success: false, message: "Other user request revoked." }, 400);
         }
 
         // Remove from requests
@@ -795,17 +804,120 @@ async function acceptFriendRequest(playerID, friendID, DB) {
         if (!friendFriends.includes(playerID)) friendFriends.push(playerID);
 
         // Update accepting player's records
-        query = `UPDATE players SET incoming_requests = ?, friends = ? WHERE id = ?`;
+        query = `UPDATE users SET incoming_requests = ?, friends = ? WHERE id = ?`;
         await DB.prepare(query).bind(toCSV(incomingRequests), toCSV(friends), playerID).run();
 
         // Update sender's records
-        query = `UPDATE players SET outgoing_requests = ?, friends = ? WHERE id = ?`;
+        query = `UPDATE users SET outgoing_requests = ?, friends = ? WHERE id = ?`;
         await DB.prepare(query).bind(toCSV(outgoingRequests), toCSV(friendFriends), friendID).run();
 
         return createResponse({ success: true, message: "Friend request accepted." });
     } catch (error) {
         console.error("Error accepting friend request:", error);
         return createResponse({ error: "Failed to accept friend request" }, 500);
+    }
+}
+
+// Send a challenge request with optimized updates
+async function challengeFriend(playerID, url, DB) {
+    const friendID = url.searchParams.get("friendID");
+    if (!playerID || !friendID) {
+        return new Response("Missing gameID or playerID", { status: 400 });
+    }
+
+    try {
+        // Fetch outgoing challenges for the challenger (sender)
+        let query = `SELECT outgoing_challenges FROM users WHERE id = ?`;
+        let challenger = await DB.prepare(query).bind(playerID).get();
+        let outgoingChallenges = parseCSV(challenger?.outgoing_challenges);
+
+        // Fetch incoming challenges for the recipient
+        query = `SELECT incoming_challenges FROM users WHERE id = ?`;
+        let recipient = await DB.prepare(query).bind(friendID).get();
+        let incomingChallenges = parseCSV(recipient?.incoming_challenges);
+
+        // Check if the challenge already exists
+        if (outgoingChallenges.includes(friendID) && incomingChallenges.includes(playerID)) {
+            return createResponse({ success: false, message: "Challenge already exists." }, 400);
+        }
+
+        let updated = false;
+
+        // Add missing entries only if necessary
+        if (!outgoingChallenges.includes(friendID)) {
+            outgoingChallenges.push(friendID);
+            updated = true;
+
+            // Update the sender's outgoing challenges
+            query = `UPDATE users SET outgoing_challenges = ? WHERE id = ?`;
+            await DB.prepare(query).bind(toCSV(outgoingChallenges), playerID).run();
+        }
+
+        if (!incomingChallenges.includes(playerID)) {
+            incomingChallenges.push(playerID);
+            updated = true;
+
+            // Update the recipient's incoming challenges
+            query = `UPDATE users SET incoming_challenges = ? WHERE id = ?`;
+            await DB.prepare(query).bind(toCSV(incomingChallenges), friendID).run();
+        }
+
+        if (!updated) {
+            return createResponse({ success: false, message: "Challenge already present, no updates made." }, 400);
+        }
+
+        return createResponse({ success: true, message: "Challenge sent or restored." });
+    } catch (error) {
+        console.error("Error sending challenge:", error);
+        return createResponse({ error: "Failed to send challenge" }, 500);
+    }
+}
+
+
+// Accept a challenge and create a game
+async function acceptChallenge(playerID, url, GAME_ROOM, DB) {
+    const friendID = url.searchParams.get("friendID");
+    if (!playerID || !friendID) {
+        return new Response("Missing gameID or playerID", { status: 400 });
+    }
+
+    try {
+        // Fetch incoming challenges for accepting player
+        let query = `SELECT incoming_challenges FROM users WHERE id = ?`;
+        let player = await DB.prepare(query).bind(playerID).get();
+        let incomingChallenges = parseCSV(player?.incoming_challenges);
+
+        // Fetch outgoing challenges for challenger
+        query = `SELECT outgoing_challenges FROM users WHERE id = ?`;
+        let friend = await DB.prepare(query).bind(friendID).get();
+        let outgoingChallenges = parseCSV(friend?.outgoing_challenges);
+
+        // Ensure both players have the challenge in their respective lists
+        if (!incomingChallenges.includes(friendID) || !outgoingChallenges.includes(playerID)) {
+            return createResponse({ success: false, message: "Challenge not found." }, 400);
+        }
+
+        // Remove the challenge from both lists
+        incomingChallenges = incomingChallenges.filter(id => id !== friendID);
+        outgoingChallenges = outgoingChallenges.filter(id => id !== playerID);
+
+        // Update the database to remove the challenge
+        query = `UPDATE users SET incoming_challenges = ? WHERE id = ?`;
+        await DB.prepare(query).bind(toCSV(incomingChallenges), playerID).run();
+
+        query = `UPDATE users SET outgoing_challenges = ? WHERE id = ?`;
+        await DB.prepare(query).bind(toCSV(outgoingChallenges), friendID).run();
+        
+        const gameID = (await handleGameCreation(playerID, url, null, GAME_ROOM, DB, 0)).json().gameID;
+        if (gameID) {
+            joinGame(playerID, url, null, GAME_ROOM, DB, 0, gameID);
+            joinGame(friend, url, null, GAME_ROOM, DB, 0, gameID);
+            return createResponse({ success: true, message: "Game joined!", gameID: result.lastInsertRowid });
+        }
+        else return createResponse({ message_type: "error", error: "Failed to create game."}, 500);
+    } catch (error) {
+        console.error("Error accepting challenge:", error);
+        return createResponse({ error: "Failed to accept challenge" }, 500);
     }
 }
 
