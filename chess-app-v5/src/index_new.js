@@ -2,12 +2,11 @@ import { Chess } from 'chess.js';
 import jwt from 'jsonwebtoken';
 import { generate } from "random-words";
 import { DurableObject } from 'cloudflare:workers';
-import nodemailer from "nodemailer";
 
 const BASE_URL = "chess-app-v5.concannon-e.workers.dev";
 const STOCKFISH_URL = "https://stockfish.online/api/s/v2.php";
 const SECRET_KEY = "capstone-chesslink"
-const OPTIONS = { expiresIn: 60 * 30 };
+const OPTIONS = { expiresIn: 60*30 };
 
 // Standardized Response Helper
 function createResponse(body, status = 200) {
@@ -17,10 +16,20 @@ function createResponse(body, status = 200) {
     });
 }
 
+// Utility function to safely parse CSV strings into an array
+function parseCSV(csvString) {
+    return csvString ? csvString.split(',').filter(Boolean) : [];
+}
+
+// Utility function to convert an array into a CSV string
+function toCSV(array) {
+    return array.length > 0 ? array.join(',') : null;
+}
+
 
 function standardGameInfo(game, playerID, players_color, players, message_type = "game-state") {
     const color = (players_color.white === playerID) ? "white" : "black";
-
+    
     return {
         fen: game.fen(),
         color,
@@ -48,7 +57,7 @@ function verifyToken(request) {
         return false; // Token is invalid
     }
 }
-
+  
 
 
 export class ChessGame extends DurableObject {
@@ -57,7 +66,7 @@ export class ChessGame extends DurableObject {
         console.log("New Durable Object instance created");
         this.storage = ctx.storage;
         this.game = null;
-        this.players = [];
+        this.players = new Set();
         this.players_color = { white: null, black: null };
         this.gameID = null;
         this.depth = 10;
@@ -66,28 +75,31 @@ export class ChessGame extends DurableObject {
     }
 
     async initializeGameState() {
-        const [storedState, storedPlayers, storedPlayersColor, storedAi, storedDepth] = await Promise.all([
+        const [storedState, storedPlayers, storedPlayersColor, storedAi, storedDepth, storedGameID] = await Promise.all([
             this.storage.get("gameState"),
             this.storage.get("players"),
             this.storage.get("players_color"),
             this.storage.get("ai"),
             this.storage.get("depth"),
+            this.storage.get("gameID")
         ]);
 
         this.game = storedState ? new Chess(storedState) : new Chess();
         this.players_color = storedPlayersColor || { white: null, black: null };
-        this.players = storedPlayers || [];
+        this.players = storedPlayers || new Set();
         this.ai = storedAi || false;
         this.depth = storedDepth || 10;
+        this.gameID = storedGameID || null;
         console.log("initializing game state ai: " + this.ai.toString() + " players: " + this.players.toString() + " colors: " + JSON.stringify(this.players_color));
     }
 
     async fetch(request) {
         const url = new URL(request.url);
         const playerID = url.searchParams.get("playerID");
-
+        
         if (!this.gameID) {
             this.gameID = url.searchParams.get("gameID");
+            this.storage.put("gameID", this.gameID);
         }
 
         if (url.pathname === "/connect" && request.headers.get("Upgrade") === "websocket") {
@@ -101,23 +113,25 @@ export class ChessGame extends DurableObject {
                 return this.handleJoinGame(playerID, ai, depth);
             case "/game-info":
                 return createResponse(standardGameInfo(this.game, playerID, this.players_color, this.players));
+            case "/update-game-info":
+                return this.handleUpdateGame(request);
             default:
                 return createResponse({ error: "Not Found" }, 404);
         }
     }
 
     async handleJoinGame(playerID, ai, depth = 10) {
-        if (!playerID) return createResponse({ message_type: "error", error: "Player ID required" }, 400);
-
+        if (!playerID) return createResponse({message_type: "error", error: "Player ID required" }, 400);
+        
         try {
             if (this.players.length >= 2) {
-                return createResponse({ message_type: "error", error: "Game is full. Cannot join." }, 403);
+                return createResponse({message_type: "error", error: "Game is full. Cannot join." }, 403);
             }
-            if (!this.players.includes(playerID)) {
-                this.players.push(playerID);
-                if (ai && this.players.length === 1) {
+            if (!this.players.has(playerID)) {
+                this.players.add(playerID);
+                if (ai && this.players.size === 1) {
                     console.log("Entered here: " + ai.toString());
-                    this.players.push("AI");
+                    this.players.add("AI");
                     await this.storage.put("ai", true);
                     await this.storage.put("depth", depth);
                     this.ai = true;
@@ -126,18 +140,53 @@ export class ChessGame extends DurableObject {
                     await this.storage.put("ai", false);
                 }
                 await this.storage.put("players", this.players);
-                console.log("Entered players: " + this.players.toString());
+                console.log("Entered players: " + Array.from(this.players).toString());
             }
             else {
-                return createResponse({ message_type: "error", error: "You are already in this game!" }, 403);
+                return createResponse({message_type: "error", error: "You are already in this game!" }, 403);
             }
 
             return createResponse(standardGameInfo(this.game, playerID, this.players_color, this.players));
         } catch (error) {
-            return createResponse({ message_type: "error", error: "Error updating durable object storage." }, 500);
+            return createResponse({message_type: "error", error: "Error updating durable object storage." }, 500);
         }
 
     }
+
+
+    async handleUpdateGame(request) {
+        try {
+            const data = await request.json();
+
+            if (data.message_type === "player-leaving") {
+                const playerID = data.playerLeaving;
+
+                if (!this.players.has(playerID)) {
+                    return new Response(JSON.stringify({ success: false, message: "Player not in game." }), { status: 400 });
+                }
+
+                // // Remove the player from the game state
+                // this.players.delete(playerID);
+
+                // Broadcast the update to all remaining players
+                const message = {
+                    message_type: "player-left",
+                    playerLeaving: playerID,
+                };
+
+                await this.sendToOpponent(message);
+                await this.handleGameOver();
+
+                return new Response(JSON.stringify({ success: true, message: "Player removed from game." }));
+            }
+
+            return new Response(JSON.stringify({ success: false, message: "Invalid message type." }), { status: 400 });
+        } catch (error) {
+            console.error("Error handling game update:", error);
+            return new Response(JSON.stringify({ error: "Failed to update game." }), { status: 500 });
+        }
+    }
+
 
     async handleWebSocket(request) {
         const url = new URL(request.url);
@@ -184,22 +233,22 @@ export class ChessGame extends DurableObject {
         const isWhiteTurn = this.game.turn() === 'w';
         const isPlayerWhite = this.players_color.white === playerID;
         const isValidTurn = (isWhiteTurn && isPlayerWhite) || (!isWhiteTurn && !isPlayerWhite);
-
+    
         if (!isValidTurn) {
             ws.send(JSON.stringify(createResponse({ message_type: "error", error: "Not your turn" }, 403)));
             return;
         }
-
+    
         let result;
         try {
             result = this.game.move(move);
         } catch {
             result = null;
         }
-
+        
         if (result) {
             await this.storage.put("gameState", this.game.fen());
-
+    
             const confirmationPayload = JSON.stringify(standardGameInfo(this.game, playerID, this.players_color, this.players, "confirmation"));
             ws.send(confirmationPayload);
             console.log("Process move: " + this.ai.toString());
@@ -213,7 +262,7 @@ export class ChessGame extends DurableObject {
             ws.send(JSON.stringify(createResponse({ message_type: "error", error: "Invalid move" }, 400)));
         }
     }
-
+    
 
     async processPlayerMessage(ws, data) {
         this.sendToOpponent(ws, data);
@@ -221,25 +270,25 @@ export class ChessGame extends DurableObject {
     }
 
 
-    async getAIMove(fen, depth = 4) {
-
+    async getAIMove(fen, depth=4) {
+    
         // Validate depth to ensure it meets the API requirement
         if (depth >= 16 || depth <= 0) {
             throw new Error("Depth must be an integer between 1 and 15.");
         }
-
+    
         // Build the request URL with query parameters
         const url = new URL(STOCKFISH_URL);
         url.searchParams.append("fen", fen);
         url.searchParams.append("depth", depth);
-
+    
         try {
-            const response = await fetch(url.toString());
+            const response = await fetch(url.toString());    
             if (!response.ok) {
                 throw new Error(`API Error: ${response.statusText}`);
             }
             const data = await response.json();
-
+    
             return data.bestmove || "No move found.";
         } catch (error) {
             console.error("Error fetching AI move:", error.message);
@@ -263,9 +312,23 @@ export class ChessGame extends DurableObject {
         } else {
             ws.send(JSON.stringify(createResponse({ message_type: "error", error: "AI move failed" }, 500)));
         }
+    } 
+    
+    async getWebSocketFromPlayerID(playerID) {
+        const playerSocket = this.ctx.getWebSockets().find((ws) => {
+            const attachment = ws.serialized; // Extract serialized attachment
+            return attachment && attachment.playerID === playerID;
+        });
+    
+        if (playerSocket) {
+            return playerSocket;
+        } else {
+            console.log(`No active WebSocket connection found for playerID: ${playerID}`);
+            return null;
+        }
     }
 
-
+    // Function to generate the payload to be sent to the opponent
     generateMovePayload(game, senderID, playersColor, players, moveResult) {
         return JSON.stringify({
             ...standardGameInfo(game, senderID, playersColor, players, "move"),
@@ -319,7 +382,7 @@ export default {
         const { GAME_ROOM, DB } = env;
 
         const url_path = url.pathname.split('/');
-
+        
         switch (url_path[1]) {
             case "create":
                 return handleGameCreation(playerID, url, request, GAME_ROOM, DB);
@@ -327,17 +390,15 @@ export default {
                 return handlePlayerActions(url_path, url, request, playerID, DB, GAME_ROOM);
             case "connect":
                 return handleConnect(url, request, GAME_ROOM);
-            case "get-token":
-                return createResponse({ message_type: "token", token: generateToken("password-request-website") });
             default:
-                return createResponse({ message_type: "error", error: "Not Found" }, 404);
+                return createResponse({message_type: "error", error: "Not Found" }, 404);
         }
     }
 };
 
 async function handleGameCreation(playerID, url, request, GAME_ROOM, DB) {
-    if (!playerID) return createResponse({ message_type: "error", error: "Player ID required." }, 400);
-    if (!verifyToken(request)) return createResponse({ message_type: "error", error: "Authentication Failed" }, 403);
+    if (!playerID) return createResponse({message_type: "error", error: "Player ID required." }, 400);
+    if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
 
     const max = 999999999;
     const min = 0;
@@ -347,14 +408,16 @@ async function handleGameCreation(playerID, url, request, GAME_ROOM, DB) {
     const success = await insertNewGame(playerID, gameString, DB);
     let ai = false;
     ai = url.searchParams.get("ai")?.toLowerCase() === "true";
-    const difficulty = url.searchParams.get("difficulty");
-    await gameRoom.fetch(
-        new URL("/join-game?playerID=" + playerID + "&ai=" + ai + "&difficulty=" + difficulty, url.origin)
-    );
+    const durable_url = new URL("/join-game", url.origin);
+    durable_url.searchParams.append("playerID", playerID);
+    durable_url.searchParams.append("ai", ai);
+    durable_url.searchParams.append("depth", url.searchParams.get("depth"));
+    await gameRoom.fetch(durable_url);
+
     if (success) {
         return createResponse({ gameID: gameString });
     } else {
-        return createResponse({ message_type: "error", error: "Database error occurred." }, 500);
+        return createResponse({message_type: "error", error: "Database error occurred." }, 500);
     }
 }
 
@@ -385,15 +448,19 @@ async function handlePlayerActions(url_path, url, request, playerID, DB, GAME_RO
         case "register":
             return registerPlayer(playerID, url, DB);
         case "end-game":
-            return removeGameFromActive(playerID, url, request, DB);
+            return removeGameFromActive(playerID, url, request, DB, GAME_ROOM);
         case "end-all-games":
             return removeAllGames(playerID, request, DB, GAME_ROOM);
-        case "reset-password-request":
-            return sendPasswordResetEmail(playerID, url, DB);
-        case "update-password":
-            return updatePasswordDB(playerID, url, request, DB);
+        case "friends":
+            return getFriends(playerID, DB);
+        case "see-friend-requests":
+            return seeFriendRquests(playerID, DB);
+        case "send-friend-request":
+            return sendFriendRequest(playerID, url, DB);
+        case "accept-friend-request":
+            return acceptFriendRequest(playerID, url, DB);
         default:
-            return createResponse({ message_type: "error", error: "Invalid action" }, 400);
+            return createResponse({message_type: "error", error: "Invalid action" }, 400);
     }
 }
 
@@ -405,109 +472,15 @@ async function loginPlayer(playerID, url, DB) {
     const result = await DB.prepare(query).bind(playerID, password).first();
     const token = generateToken(playerID);
     if (result) {
-        return createResponse({ token: token });
+        return createResponse({token: token});
     } else {
         return createResponse({}, 404);
     }
 }
 
-async function sendPasswordResetEmail(playerID, url, DB) {
-    const email = url.searchParams.get("email");
-
-    if (!email || !playerID) {
-        return createResponse({
-            error: "Missing required fields (email or playerID)",
-            message_type: "error"
-        }, 400);
-    }
-
-    const query = `SELECT * FROM users WHERE id = ? AND email = ?;`;
-    const result = await DB.prepare(query).bind(playerID, email).first();
-
-    if (!result) {
-        console.log("Email not found");
-        return createResponse({ error: "Email not found" }, 404);
-    }
-
-    console.log("Sending reset email to:", email);
-    await sendResetEmail(email, playerID);
-
-    return createResponse({ message: "Reset email sent." });
-}
-
-/*async function updatePasswordDB(playerID, url, request, DB) {
-    const token = url.searchParams.get("token");
-    const newPassword = request.json().newPassword;
-
-    if (!token || !newPassword) {
-        return createResponse({ error: "Missing token or new password." }, 400);
-    }
-
-    try {
-        const decoded = jwt.verify(token, SECRET_KEY);
-    } catch (err) {
-        return createResponse({ error: "Invalid or expired token." }, 400);
-    }
-
-        if (!decoded.reset) {
-            return createResponse({ error: "Invalid token type." }, 400);
-        }
-    try {
-        const query = `UPDATE users SET password = ? WHERE id = ?;`;
-        await DB.prepare(query).bind(newPassword, playerID).run();
-
-        return createResponse({ message: "Password reset successful." });
-    } catch (err) {
-        return createResponse({ error: "Error updating database with new password." }, 500);
-    }
-}
-*/
-
-const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-        user: "chesslinknu@gmail.com",
-        pass: "Capstone2025",
-    },
-});
-
-transporter.verify((error, success) => {
-    if (error) {
-        console.error("Transporter verification failed:", error);
-    } else {
-        console.log("Transporter is ready to send emails");
-    }
-});
-async function sendResetEmail(email, playerID) {
-    console.log("Attempting to send email to:", email);
-
-    const resetLink = `https://thtran13.github.io/ChessLink?playerID=${playerID}/`; // add playerID to URL
-
-    const mailOptions = {
-        from: "chesslinknu@gmail.com",
-        to: email,
-        subject: "Password Reset Request",
-        html: `
-        <h2>Password Reset Request</h2>
-        <p>Click the link below to reset your password:</p>
-        <a href="${resetLink}" style="font-size: 16px; padding: 10px 15px; background: #007bff; color: white; text-decoration: none; border-radius: 5px;">
-          Reset Password
-        </a>
-        <p>If you did not request a password reset, please ignore this email.</p>
-      `,
-    };
-
-    try {
-        await transporter.sendMail(mailOptions);
-        console.log(`Reset email sent to ${email}`);
-    } catch (error) {
-        console.error("Error sending email:", error);
-        throw new Error("Failed to send reset email.");
-    }
-}
 
 async function joinGame(playerID, url, request, GAME_ROOM, DB) {
-    if (!verifyToken(request)) return createResponse({ message_type: "error", error: "Authentication Failed" }, 403);
+    if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
 
     const gameID = url.searchParams.get("gameID");
     const gameRoom = GAME_ROOM.get(GAME_ROOM.idFromName(gameID));
@@ -527,77 +500,111 @@ async function joinGame(playerID, url, request, GAME_ROOM, DB) {
 
 
 async function insertNewGame(playerID, gameID, DB) {
-    const query = `
-        UPDATE users
-        SET active_games = 
-            COALESCE(active_games || ',', '') || ?
-        WHERE id = ?;
-    `;
     try {
-        const result = await DB.prepare(query).bind(gameID, playerID).run();
-        return result.success;
-    } catch (error) {
-        console.error("Error inserting new game:", error);
-        return false;
-    }
-}
+        // Fetch current active games
+        const query = `SELECT active_games FROM users WHERE id = ?`;
+        const result = await DB.prepare(query).bind(playerID).run();
+        let activeGames = parseCSV(result?.active_games);
 
-
-async function removeGameFromActive(playerID, url, request, DB) {
-    if (!verifyToken(request)) return createResponse({ message_type: "error", error: "Authentication Failed" }, 403);
-
-    const gameID = url.searchParams.get("gameID");
-    const query = `
-        UPDATE users
-        SET active_games = 
-            CASE 
-                WHEN REPLACE(',' || active_games || ',', ',' || ? || ',', ',') = ',' THEN NULL
-                ELSE SUBSTR(
-                    REPLACE(',' || active_games || ',', ',' || ? || ',', ','),
-                    2,
-                    LENGTH(REPLACE(',' || active_games || ',', ',' || ? || ',', ',')) - 2
-                )
-            END
-        WHERE id = ?;
-    `;
-
-    try {
-        await DB.prepare(query).bind(gameID, gameID, gameID, playerID).run();
-        return createResponse();
-    } catch (error) {
-        console.error("Error removing game from active games:", error);
-        return false;
-    }
-}
-
-
-// add fetch response for durable object
-async function removeAllGames(playerID, request, DB, GAME_ROOM) {
-    if (!verifyToken(request)) return createResponse({ message_type: "error", error: "Authentication Failed" }, 403);
-
-    // Step 1: Fetch all active games for the player
-    const query = `
-        SELECT active_games 
-        FROM users 
-        WHERE id = ?;
-    `;
-
-    try {
-        const result = await DB.prepare(query).bind(playerID).first();
-        if (!result || !result.active_games) {
-            console.log(`No active games found for player: ${playerID}`);
-            return createResponse();
+        // Prevent duplicate game entries
+        if (activeGames.includes(gameID)) {
+            return createResponse({ success: false, message: "Game already exists in active games." }, 400);
         }
 
-        const activeGames = result.active_games.split(','); // Assuming comma-separated game IDs
+        // Add new game to list
+        activeGames.push(gameID);
 
-        // Step 2: Iterate through each game and update its Durable Object storage
+        // Update the database
+        const updateQuery = `UPDATE users SET active_games = ? WHERE id = ?`;
+        await DB.prepare(updateQuery).bind(toCSV(activeGames), playerID).run();
+
+        return createResponse({ success: true, message: "Game added to active games." });
+    } catch (error) {
+        console.error("Error inserting new game:", error);
+        return createResponse({ error: "Failed to insert new game." }, 500);
+    }
+}
+
+
+async function removeGameFromActive(playerID, url, request, DB, GAME_ROOM) {
+    if (!verifyToken(request)) 
+        return createResponse({ message_type: "error", error: "Authentication Failed" }, 403);
+
+    const gameID = url.searchParams.get("gameID");
+    if (!gameID) 
+        return createResponse({ message_type: "error", error: "Missing gameID parameter" }, 400);
+
+    try {
+        // Step 1: Fetch current active games
+        const query = `SELECT active_games FROM users WHERE id = ?`;
+        const result = await DB.prepare(query).bind(playerID).run();
+        console.log("result" + JSON.stringify(result));
+        let activeGames = parseCSV(result?.results[0]?.active_games);
+        console.log("activeGames"+ activeGames.toString());
+
+        // Step 2: Check if the game exists in the list
+        if (!activeGames.includes(gameID)) {
+            return createResponse({ success: false, message: "Game not found in active games." }, 404);
+        }
+
+        // Step 3: Remove the game from the list
+        activeGames = activeGames.filter(id => id !== gameID);
+        const updatedGames = toCSV(activeGames); // Convert back to CSV string
+
+        // Step 4: Update the database
+        const updateQuery = `UPDATE users SET active_games = ? WHERE id = ?`;
+        await DB.prepare(updateQuery).bind(updatedGames, playerID).run();
+
+        // Step 5: Notify the Durable Object about player leaving
+        const gameRoomId = GAME_ROOM.idFromName(gameID);
+        const gameRoom = GAME_ROOM.get(gameRoomId);
+
+        try {
+            const response = await gameRoom.fetch("https://" + BASE_URL + "/update-game-info", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    playerLeaving: playerID,
+                }),
+            });
+
+            if (!response.ok) {
+                console.error(`Failed to update game status for gameID: ${gameID}`);
+            }
+        } catch (error) {
+            console.error(`Error communicating with Durable Object for gameID: ${gameID}`, error);
+        }
+
+        return createResponse({ success: true, message: "Game removed from active games." });
+    } catch (error) {
+        console.error("Error removing game from active games:", error);
+        return createResponse({ error: "Failed to remove game." }, 500);
+    }
+}
+
+
+async function removeAllGames(playerID, request, DB, GAME_ROOM) {
+    if (!verifyToken(request)) 
+        return createResponse({ message_type: "error", error: "Authentication Failed" }, 403);
+
+    try {
+        // Step 1: Fetch all active games for the player
+        const query = `SELECT active_games FROM users WHERE id = ?`;
+        const result = await DB.prepare(query).bind(playerID).run();
+        let activeGames = parseCSV(result?.active_games);
+
+        if (activeGames.length === 0) {
+            console.log(`No active games found for player: ${playerID}`);
+            return createResponse({ success: true, message: "No active games to remove." });
+        }
+
+        // Step 2: Notify each game’s Durable Object
         for (const gameID of activeGames) {
             const gameRoomId = GAME_ROOM.idFromName(gameID);
             const gameRoom = GAME_ROOM.get(gameRoomId);
 
             try {
-                const response = await gameRoom.fetch("https://" + BASE_URL + "/update-game-status", {
+                const response = await gameRoom.fetch("https://" + BASE_URL + "/update-game-info", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -614,24 +621,20 @@ async function removeAllGames(playerID, request, DB, GAME_ROOM) {
         }
 
         // Step 3: Remove all active games for the player in the database
-        const updateQuery = `
-            UPDATE users
-            SET active_games = NULL 
-            WHERE id = ?;
-        `;
+        const updateQuery = `UPDATE users SET active_games = NULL WHERE id = ?`;
         await DB.prepare(updateQuery).bind(playerID).run();
 
-        return createResponse();
+        return createResponse({ success: true, message: "All active games removed." });
     } catch (error) {
-        console.error("Error removing games from active games:", error);
-        return false;
+        console.error("Error removing all active games:", error);
+        return createResponse({ error: "Failed to remove all games." }, 500);
     }
 }
 
 
 async function getGameInfo(playerID, request, GAME_ROOM, DB) {
-    if (!playerID) return createResponse({ message_type: "error", error: "Player ID is required." }, 400);
-    if (!verifyToken(request)) return createResponse({ message_type: "error", error: "Authentication Failed" }, 403);
+    if (!playerID) return createResponse({message_type: "error", error: "Player ID is required." }, 400);
+    if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
 
     const query = `SELECT active_games FROM users WHERE id = ?;`;
     const result = await DB.prepare(query).bind(playerID).all();
@@ -641,6 +644,11 @@ async function getGameInfo(playerID, request, GAME_ROOM, DB) {
     }
 
     const activeGames = String(result.results[0].active_games);
+
+    if (activeGames === "null") {
+        return createResponse({ games: [] });
+    }
+
     const gameIDs = activeGames ? activeGames.split(',') : [];
 
     const gamesInfo = await Promise.all(
@@ -694,3 +702,110 @@ async function registerPlayer(playerID, url, DB) {
         }, 500);
     }
 }
+
+// Retrieve list of friends
+async function getFriends(playerID, DB) {
+    const query = `SELECT friends FROM players WHERE id = ?`;
+    try {
+        const result = await DB.prepare(query).bind(playerID).run();
+        return createResponse({ friends: parseCSV(result?.friends) });
+    } catch (error) {
+        console.error("Error retrieving friends:", error);
+        return createResponse({ error: "Failed to retrieve friends" }, 500);
+    }
+}
+
+// Retrieve both incoming and outgoing friend requests
+async function seeFriendRequests(playerID, DB) {
+    const query = `SELECT incoming_requests, outgoing_requests FROM players WHERE id = ?`;
+    try {
+        const result = await DB.prepare(query).bind(playerID).run();
+        return createResponse({
+            incoming_requests: parseCSV(result?.incoming_requests),
+            outgoing_requests: parseCSV(result?.outgoing_requests)
+        });
+    } catch (error) {
+        console.error("Error retrieving friend requests:", error);
+        return createResponse({ error: "Failed to retrieve friend requests" }, 500);
+    }
+}
+
+// Send a friend request
+async function sendFriendRequest(playerID, friendID, DB) {
+    try {
+        // Fetch outgoing requests for sender
+        let query = `SELECT outgoing_requests FROM players WHERE id = ?`;
+        let sender = await DB.prepare(query).bind(playerID).run();
+        let outgoingRequests = parseCSV(sender?.outgoing_requests);
+
+        // Fetch incoming requests for receiver
+        query = `SELECT incoming_requests FROM players WHERE id = ?`;
+        let receiver = await DB.prepare(query).bind(friendID).run();
+        let incomingRequests = parseCSV(receiver?.incoming_requests);
+
+        // Prevent duplicate requests
+        if (outgoingRequests.includes(friendID) || incomingRequests.includes(playerID)) {
+            return createResponse({ success: false, message: "Friend request already sent or received." }, 400);
+        }
+
+        outgoingRequests.push(friendID);
+        incomingRequests.push(playerID);
+
+        // Update sender's outgoing requests
+        query = `UPDATE players SET outgoing_requests = ? WHERE id = ?`;
+        await DB.prepare(query).bind(toCSV(outgoingRequests), playerID).run();
+
+        // Update receiver's incoming requests
+        query = `UPDATE players SET incoming_requests = ? WHERE id = ?`;
+        await DB.prepare(query).bind(toCSV(incomingRequests), friendID).run();
+
+        return createResponse({ success: true, message: "Friend request sent." });
+    } catch (error) {
+        console.error("Error sending friend request:", error);
+        return createResponse({ error: "Failed to send friend request" }, 500);
+    }
+}
+
+// Accept a friend request
+async function acceptFriendRequest(playerID, friendID, DB) {
+    try {
+        // Fetch incoming requests and friends for accepting player
+        let query = `SELECT incoming_requests, friends FROM players WHERE id = ?`;
+        let player = await DB.prepare(query).bind(playerID).run();
+        let incomingRequests = parseCSV(player?.incoming_requests);
+        let friends = parseCSV(player?.friends);
+
+        // Fetch outgoing requests and friends for sender
+        query = `SELECT outgoing_requests, friends FROM players WHERE id = ?`;
+        let friend = await DB.prepare(query).bind(friendID).run();
+        let outgoingRequests = parseCSV(friend?.outgoing_requests);
+        let friendFriends = parseCSV(friend?.friends);
+
+        // Verify request exists
+        if (!incomingRequests.includes(friendID)) {
+            return createResponse({ success: false, message: "No pending friend request from this user." }, 400);
+        }
+
+        // Remove from requests
+        incomingRequests = incomingRequests.filter(id => id !== friendID);
+        outgoingRequests = outgoingRequests.filter(id => id !== playerID);
+
+        // Add to friends list
+        if (!friends.includes(friendID)) friends.push(friendID);
+        if (!friendFriends.includes(playerID)) friendFriends.push(playerID);
+
+        // Update accepting player's records
+        query = `UPDATE players SET incoming_requests = ?, friends = ? WHERE id = ?`;
+        await DB.prepare(query).bind(toCSV(incomingRequests), toCSV(friends), playerID).run();
+
+        // Update sender's records
+        query = `UPDATE players SET outgoing_requests = ?, friends = ? WHERE id = ?`;
+        await DB.prepare(query).bind(toCSV(outgoingRequests), toCSV(friendFriends), friendID).run();
+
+        return createResponse({ success: true, message: "Friend request accepted." });
+    } catch (error) {
+        console.error("Error accepting friend request:", error);
+        return createResponse({ error: "Failed to accept friend request" }, 500);
+    }
+}
+
