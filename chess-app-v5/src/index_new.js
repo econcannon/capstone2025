@@ -266,7 +266,6 @@ export class ChessGame extends DurableObject {
     }
 
 
-    // Function to generate the payload to be sent to the opponent
     generateMovePayload(game, senderID, playersColor, players, moveResult) {
         return JSON.stringify({
             ...standardGameInfo(game, senderID, playersColor, players, "move"),

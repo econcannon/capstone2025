@@ -88,6 +88,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
   void initState() {
     super.initState();
     _fetchGames();
+    //_requestBluetoothPermissions();
     _checkBluetoothConnection();
   }
 
@@ -155,29 +156,30 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
     }
   }
 
-  Future<void> requestBluetoothPermissions() async {
+  Future<void> _requestBluetoothPermissions() async {
     if (await Permission.bluetoothScan.isDenied ||
         await Permission.bluetoothConnect.isDenied) {
-      await [
+      Map<Permission, PermissionStatus> statuses = await [
         Permission.bluetoothScan,
         Permission.bluetoothConnect,
       ].request();
+
+      statuses.forEach((permission, status) {
+        print('$permission: $status');
+      });
     }
   }
 
   Future<void> _scanAndConnectBluetooth() async {
     print("Scanning for Bluetooth devices...");
 
-    // Start scanning
     FlutterBluePlus.startScan(timeout: Duration(seconds: 4));
 
-    // Listen to scan results
     List<ScanResult> scanResults = [];
     var subscription = FlutterBluePlus.scanResults.listen((results) {
       scanResults = results;
     });
 
-    // Wait for the scan to complete
     await Future.delayed(Duration(seconds: 4));
     await FlutterBluePlus.stopScan();
     subscription.cancel();
@@ -192,7 +194,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
       if (result.device.platformName == ARDUINO_NAME) {
         arduinoDevice = result.device;
         print(
-            "Found Arduino: ${arduinoDevice.platformName} (${arduinoDevice.id})");
+            "Found Arduino: ${arduinoDevice.platformName} (${arduinoDevice.remoteId})");
         break;
       }
     }
