@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'chess.dart';
 import 'main_menu.dart';
 import 'manage_game.dart';
+import 'friends.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'constants.dart';
@@ -187,7 +188,12 @@ class AuthMainMenu extends StatelessWidget {
             SizedBox(
               width: 300,
               child: ElevatedButton(
-                onPressed: () {},
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const FriendsPage()),
+                  );
+                },
                 child: const Text('Manage Friends'),
               ),
             ),
