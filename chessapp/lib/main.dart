@@ -5,7 +5,6 @@ import 'manage_game.dart';
 import 'friends.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'constants.dart';
 
 String PLAYERID = "";
 String PASSWORD = "";

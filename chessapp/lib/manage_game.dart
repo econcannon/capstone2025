@@ -9,8 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 class EnterWifiInfoPage extends StatefulWidget {
   final Function(String ssid, String password) onWifiInfoSubmitted;
 
-  const EnterWifiInfoPage({Key? key, required this.onWifiInfoSubmitted})
-      : super(key: key);
+  const EnterWifiInfoPage({super.key, required this.onWifiInfoSubmitted});
 
   @override
   _EnterWifiInfoPageState createState() => _EnterWifiInfoPageState();
@@ -75,7 +74,7 @@ class ViewOngoingGame extends StatefulWidget {
 class _ViewOngoingGameState extends State<ViewOngoingGame> {
   FlutterBluePlus flutterBlue = FlutterBluePlus();
   bool isBluetoothConnected = false;
-  BluetoothDevice? _connectedDevice;
+  late BluetoothDevice _connectedDevice;
 
   String SSID_CHAR_UUID = "8266532f-1fe1-4af9-97e1-3b7c04ef8201";
   String PASSWORD_CHAR_UUID = "91abf729-1b45-4147-b8f7-b93620e8bce1";
@@ -87,13 +86,16 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
   @override
   void initState() {
     super.initState();
-    _fetchGames();
-    //_requestBluetoothPermissions();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    await _requestBluetoothPermissions();
     _checkBluetoothConnection();
+    _fetchGames();
   }
 
   List<Map<String, dynamic>> games = [];
-  List<Map<String, dynamic>> get list_of_ongoing_games => games;
 
   Future<void> _fetchGames() async {
     try {
@@ -156,37 +158,81 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
     }
   }
 
-  Future<void> _requestBluetoothPermissions() async {
-    if (await Permission.bluetoothScan.isDenied ||
-        await Permission.bluetoothConnect.isDenied) {
-      Map<Permission, PermissionStatus> statuses = await [
-        Permission.bluetoothScan,
-        Permission.bluetoothConnect,
-      ].request();
+  Future<bool> _requestBluetoothPermissions() async {
+    print("Requesting permissions...");
 
-      statuses.forEach((permission, status) {
-        print('$permission: $status');
-      });
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.locationWhenInUse,
+    ].request();
+
+    bool allGranted =
+        statuses.values.every((status) => status == PermissionStatus.granted);
+
+    statuses.forEach((permission, status) {
+      print('$permission: $status');
+    });
+
+    if (!allGranted) {
+      print("Error: Not all required permissions were granted.");
+      return false;
     }
+
+    print("All required permissions granted.");
+    return true;
   }
 
   Future<void> _scanAndConnectBluetooth() async {
-    print("Scanning for Bluetooth devices...");
+    if (await Permission.bluetoothScan.isDenied ||
+        await Permission.bluetoothConnect.isDenied ||
+        await Permission.locationWhenInUse.isDenied) {
+      print("Required permissions are not granted!");
+      return;
+    }
+    print("Permissions granted.");
 
-    FlutterBluePlus.startScan(timeout: Duration(seconds: 4));
+    if (await FlutterBluePlus.adapterState.first != BluetoothAdapterState.on) {
+      print("Bluetooth is off. Please enable Bluetooth.");
+      return;
+    }
+
+    print("Scanning for Bluetooth devices...");
+    try {
+      FlutterBluePlus.startScan(timeout: Duration(seconds: 4));
+    } catch (e) {
+      print("Error starting Bluetooth scan: $e");
+      return;
+    }
+    print("Scanning started.");
 
     List<ScanResult> scanResults = [];
     var subscription = FlutterBluePlus.scanResults.listen((results) {
-      scanResults = results;
+      try {
+        scanResults = results;
+      } catch (e) {
+        print("Error in scan results listener: $e");
+      }
     });
+    print("Listening for scan results...");
 
     await Future.delayed(Duration(seconds: 4));
+
+    print("Scanning stopped.");
     await FlutterBluePlus.stopScan();
+    print("Scan results received.");
     subscription.cancel();
+    print("Subscription cancelled.");
 
     if (scanResults.isEmpty) {
       print("No Bluetooth devices found.");
       return;
+    }
+
+    print("Scan results:");
+    for (var result in scanResults) {
+      print(
+          "Device: ${result.device.platformName}, ID: ${result.device.remoteId}");
     }
 
     late BluetoothDevice arduinoDevice;
@@ -199,37 +245,30 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
       }
     }
 
-    if (arduinoDevice != null) {
-      try {
-        await arduinoDevice.connect();
-        print("Connected to ${arduinoDevice.platformName}");
+    try {
+      await arduinoDevice.connect();
+      print("Connected to ${arduinoDevice.platformName}");
 
-        List<BluetoothService> services =
-            await arduinoDevice.discoverServices();
-        for (var service in services) {
-          print("[Service] ${service.uuid}");
-          for (var characteristic in service.characteristics) {
-            print(
-                "  [Characteristic] ${characteristic.uuid} - ${characteristic.properties}");
-          }
+      List<BluetoothService> services = await arduinoDevice.discoverServices();
+      for (var service in services) {
+        print("[Service] ${service.uuid}");
+        for (var characteristic in service.characteristics) {
+          print(
+              "  [Characteristic] ${characteristic.uuid} - ${characteristic.properties}");
         }
-
-        _connectedDevice = arduinoDevice;
-      } catch (e) {
-        print("Error connecting to Arduino: $e");
       }
-    } else {
-      print("Arduino not found. Please ensure it is powered on and in range.");
+
+      setState(() {
+        _connectedDevice = arduinoDevice;
+        isBluetoothConnected = true;
+      });
+    } catch (e) {
+      print("Error connecting to Arduino: $e");
     }
   }
 
   Future<void> _updateCharacteristics(
       Map<String, dynamic> game, String ssid, String password) async {
-    if (_connectedDevice == null) {
-      print("No device connected.");
-      return;
-    }
-
     try {
       List<BluetoothService> services =
           await _connectedDevice!.discoverServices();
@@ -261,10 +300,12 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
       FlutterBluePlus.adapterState.listen((state) {
         if (state == BluetoothAdapterState.on) {
           setState(() {
+            print("Bluetooth is on.");
             isBluetoothConnected = true;
           });
         } else {
           setState(() {
+            print("Bluetooth is off.");
             isBluetoothConnected = false;
           });
         }
@@ -280,25 +321,18 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
       return;
     }
 
-    if (_connectedDevice == null) {
-      await _scanAndConnectBluetooth();
-    }
-
-    if (_connectedDevice != null) {
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => EnterWifiInfoPage(
-            onWifiInfoSubmitted: (ssid, password) {
-              print("SSID: $ssid, Password: $password");
-              _transmitGameToBoard(game, ssid, password);
-            },
-          ),
+    await _scanAndConnectBluetooth();
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EnterWifiInfoPage(
+          onWifiInfoSubmitted: (ssid, password) {
+            print("SSID: $ssid, Password: $password");
+            _transmitGameToBoard(game, ssid, password);
+          },
         ),
-      );
-    } else {
-      print("Failed to connect to the board.");
-    }
+      ),
+    );
   }
 
   Future<void> _transmitGameToBoard(
@@ -354,8 +388,14 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
                               ),
                               ElevatedButton(
                                 onPressed: () {
-                                  // Add functionality for joining the game
                                   print("Join game: ${game['gameID']}");
+                                  GAMEID = game['gameID'];
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            GamePage(gameId: GAMEID)),
+                                  );
                                 },
                                 child: const Text('Join'),
                               ),

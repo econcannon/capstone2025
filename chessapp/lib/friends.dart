@@ -11,13 +11,13 @@ class FriendsPage extends StatefulWidget {
 }
 
 class _FriendsPageState extends State<FriendsPage> {
-  List<String> friends = []; 
+  List<String> friends = [];
   final TextEditingController _friendIdController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-   _fetchFriends(); 
+    _fetchFriends();
   }
 
   Future<void> _fetchFriends() async {
@@ -27,6 +27,7 @@ class _FriendsPageState extends State<FriendsPage> {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
+        print(response.body);
         setState(() {
           friends = List<String>.from(data['friends']);
         });
@@ -40,23 +41,23 @@ class _FriendsPageState extends State<FriendsPage> {
 
   Future<void> _addFriend(String friendId) async {
     try {
-      final endpoint = "$BASE_URL/player/send-friend-request?playerID=$PLAYERID&friendID=$friendId";
+      final endpoint =
+          "$BASE_URL/player/send-friend-request?playerID=$PLAYERID&friendID=$friendId";
       final response = await http.post(Uri.parse(endpoint), headers: HEADERS);
 
       if (response.statusCode == 200) {
         print("Friend request sent to $friendId.");
       } else {
-        print("Failed to send friend request.");
-        print("friendid = $friendId, playerid = $PLAYERID");
-        print(response.statusCode);
-        print(response.body);
+        print(
+            "Failed to send friend request. Status code: ${response.statusCode}");
+        print("Response body: ${response.body}");
       }
     } catch (e) {
       print("Error sending friend request: $e");
     }
   }
 
-  // Remove a friend? 
+  // Remove a friend?
   // Future<void> _removeFriend(String friendId) async {
   //   try {
   //     final endpoint = "$BASE_URL/player/";
@@ -77,16 +78,39 @@ class _FriendsPageState extends State<FriendsPage> {
   // Challenge a friend
   Future<void> _challengeFriend(String friendId) async {
     try {
-      final endpoint = "$BASE_URL/player/challenge-friend?playerID=$PLAYERID&friendID=$friendId";
+      final endpoint =
+          "$BASE_URL/player/challenge-friend?playerID=$PLAYERID&friendID=$friendId";
       final response = await http.post(Uri.parse(endpoint), headers: HEADERS);
 
       if (response.statusCode == 200) {
+        print(response.body);
         print("Challenge sent to $friendId.");
       } else {
+        print(response.body);
+        print(response.statusCode);
         print("Failed to send challenge.");
       }
     } catch (e) {
       print("Error challenging friend: $e");
+    }
+  }
+
+  Future<void> _acceptChallenge(String friendId) async {
+    try {
+      final endpoint =
+          "$BASE_URL/player/accept-challenge?playerID=$PLAYERID&friendID=$friendId";
+      final response = await http.post(Uri.parse(endpoint), headers: HEADERS);
+
+      if (response.statusCode == 200) {
+        print(response.body);
+        print("Challenge accepted.");
+      } else {
+        print(response.body);
+        print(response.statusCode);
+        print("Failed to accept challenge.");
+      }
+    } catch (e) {
+      print("Error accepting challenge: $e");
     }
   }
 
@@ -138,7 +162,8 @@ class _FriendsPageState extends State<FriendsPage> {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const FriendRequestsPage()),
+                MaterialPageRoute(
+                    builder: (context) => const FriendRequestsPage()),
               );
             },
           ),
@@ -157,6 +182,12 @@ class _FriendsPageState extends State<FriendsPage> {
                   icon: const Icon(Icons.sports_esports),
                   onPressed: () {
                     _challengeFriend(friend);
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.check),
+                  onPressed: () {
+                    _acceptChallenge(friend);
                   },
                 ),
                 IconButton(
@@ -193,11 +224,14 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
 
   Future<void> _fetchFriendRequests() async {
     try {
-      final endpoint = "$BASE_URL/player/see-friend-requests?playerID=$PLAYERID";
+      final endpoint =
+          "$BASE_URL/player/see-friend-requests?playerID=$PLAYERID";
       final response = await http.get(Uri.parse(endpoint), headers: HEADERS);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
+        print("response body:");
+        print(response.body);
         setState(() {
           incomingRequests = List<String>.from(data['incoming_requests']);
           outgoingRequests = List<String>.from(data['outgoing_requests']);
@@ -212,7 +246,8 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
 
   Future<void> _acceptFriendRequest(String friendId) async {
     try {
-      final endpoint = "$BASE_URL/player/accept-friend-request?playerID=$PLAYERID&friendID=$friendId";
+      final endpoint =
+          "$BASE_URL/player/accept-friend-request?playerID=$PLAYERID&friendID=$friendId";
       final response = await http.post(Uri.parse(endpoint), headers: HEADERS);
 
       if (response.statusCode == 200) {
@@ -221,6 +256,7 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
         });
         print("Friend request accepted.");
       } else {
+        print(response.body);
         print("Failed to accept friend request.");
       }
     } catch (e) {
@@ -269,6 +305,7 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
                         icon: const Icon(Icons.check),
                         onPressed: () {
                           _acceptFriendRequest(friendId);
+
                         },
                       ),
                       IconButton(
@@ -291,7 +328,7 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
                 final friendId = outgoingRequests[index];
                 return ListTile(
                   title: Text(friendId),
-                  trailing: const Icon(Icons.hourglass_top), 
+                  trailing: const Icon(Icons.hourglass_top),
                 );
               },
             ),
