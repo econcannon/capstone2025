@@ -69,9 +69,9 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
   }
 
   Future startScan() async {
-    FlutterBluePlus.startScan(timeout: Duration(seconds: 10));
+    FlutterBluePlus.startScan(timeout: Duration(seconds: 5));
 
-    // FlutterBluePlus.stopScan();
+    FlutterBluePlus.stopScan();
   }
 
   Future<void> _scanAndConnectBluetooth() async {
@@ -87,7 +87,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
       print("Bluetooth is off. Please enable Bluetooth.");
       return;
     }
-    await startScan();
+    startScan();
 
     List<ScanResult> scanResults = [];
     var subscription = FlutterBluePlus.scanResults.listen((results) {
