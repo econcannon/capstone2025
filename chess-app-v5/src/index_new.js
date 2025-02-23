@@ -607,7 +607,7 @@ async function insertNewGame(playerID, gameID, DB) {
         const query = `SELECT active_games FROM users WHERE id = ?`;
         const result = await DB.prepare(query).bind(playerID).run();
         let activeGames = parseCSV(result?.active_games);
-
+        console.log("activeGames" + activeGames.toString());
         // Prevent duplicate game entries
         if (activeGames.includes(gameID)) {
             return createResponse({ success: false, message: "Game already exists in active games." }, 400);
@@ -617,6 +617,7 @@ async function insertNewGame(playerID, gameID, DB) {
         activeGames.push(gameID);
 
         // Update the database
+        console.log("activeGames2" + activeGames.toString());
         const updateQuery = `UPDATE users SET active_games = ? WHERE id = ?`;
         await DB.prepare(updateQuery).bind(toCSV(activeGames), playerID).run();
 
