@@ -42,8 +42,9 @@ dependencies:
   url_launcher: ^6.0.10
   flutter_svg: ^2.0.17
   wifi_iot: ^0.3.19+1
-  flutter_blue_plus: ^1.0.0
+  flutter_blue_plus: ^1.4.0
   permission_handler: ^11.4.0
+  get: ^4.6.5
 
 dev_dependencies:
   flutter_test:

@@ -5,6 +5,7 @@ import 'manage_game.dart';
 import 'friends.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'testBluetooth.dart';
 
 String PLAYERID = "";
 String PASSWORD = "";
@@ -100,10 +101,10 @@ class ButtonPage extends StatelessWidget {
               width: 300,
               child: ElevatedButton(
                 onPressed: () {
-                //   Navigator.push(
-                //     context,
-                //     MaterialPageRoute(builder: (context) => const WelcomeScreen()),
-                //   );
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const BlueToothPage()),
+                  );
                 },
                 child: const Text('test'), //done
               ),

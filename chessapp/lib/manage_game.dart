@@ -5,62 +5,8 @@ import 'main.dart';
 import 'chess.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
-
-class EnterWifiInfoPage extends StatefulWidget {
-  final Function(String ssid, String password) onWifiInfoSubmitted;
-
-  const EnterWifiInfoPage({super.key, required this.onWifiInfoSubmitted});
-
-  @override
-  _EnterWifiInfoPageState createState() => _EnterWifiInfoPageState();
-}
-
-class _EnterWifiInfoPageState extends State<EnterWifiInfoPage> {
-  final TextEditingController ssidController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Enter Wi-Fi Information")),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              controller: ssidController,
-              decoration: const InputDecoration(labelText: "Wi-Fi SSID"),
-            ),
-            TextField(
-              controller: passwordController,
-              decoration: const InputDecoration(labelText: "Wi-Fi Password"),
-              obscureText: true,
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                String ssid = ssidController.text;
-                String password = passwordController.text;
-
-                if (ssid.isNotEmpty && password.isNotEmpty) {
-                  widget.onWifiInfoSubmitted(ssid, password);
-                  Navigator.pop(context);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text("Please enter both SSID and password.")),
-                  );
-                }
-              },
-              child: const Text("Submit"),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+import 'package:flutter/services.dart'; 
+import 'package:get/get.dart';
 
 class ViewOngoingGame extends StatefulWidget {
   final String playerId;
@@ -72,7 +18,6 @@ class ViewOngoingGame extends StatefulWidget {
 }
 
 class _ViewOngoingGameState extends State<ViewOngoingGame> {
-  FlutterBluePlus flutterBlue = FlutterBluePlus();
   bool isBluetoothConnected = false;
   late BluetoothDevice _connectedDevice;
 
@@ -89,7 +34,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
     _initialize();
   }
 
-  Future<void> _initialize() async {
+  void _initialize() async {
     await _requestBluetoothPermissions();
     _checkBluetoothConnection();
     _fetchGames();
@@ -97,68 +42,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
 
   List<Map<String, dynamic>> games = [];
 
-  Future<void> _fetchGames() async {
-    try {
-      final endpoint = "$BASE_URL/player/games?playerID=${widget.playerId}";
-      final response = await http.get(Uri.parse(endpoint), headers: HEADERS);
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data != null && data['games'] != null) {
-          setState(() {
-            games = List<Map<String, dynamic>>.from(data['games']);
-          });
-        }
-      } else {
-        print("Failed to fetch games.");
-      }
-    } catch (e) {
-      print("Error fetching games: $e");
-    }
-  }
-
-  Future<void> _deleteGame(String gameID) async {
-    try {
-      final endpoint =
-          "$BASE_URL/player/end-game?playerID=${widget.playerId}&gameID=$gameID";
-      final response = await http.post(Uri.parse(endpoint), headers: HEADERS);
-
-      if (response.statusCode == 200) {
-        print("Game deleted successfully.");
-
-        setState(() {
-          games.removeWhere((game) => game['gameID'] == gameID);
-        });
-      } else {
-        print("Failed to delete game.");
-        print(response.statusCode);
-        print(response.body);
-      }
-    } catch (e) {
-      print("Error deleting game: $e");
-    }
-  }
-
-  Future<void> _deleteAllGames() async {
-    try {
-      final endpoint =
-          "$BASE_URL/player/end-all-games?playerID=${widget.playerId}";
-      final response = await http.post(Uri.parse(endpoint), headers: HEADERS);
-
-      if (response.statusCode == 200) {
-        print("All games deleted successfully.");
-        setState(() {
-          games.clear();
-        });
-      } else {
-        print("Failed to delete all games.");
-      }
-    } catch (e) {
-      print("Error deleting all games: $e");
-    }
-  }
-
-  Future<bool> _requestBluetoothPermissions() async {
+  Future<void> _requestBluetoothPermissions() async {
     print("Requesting permissions...");
 
     Map<Permission, PermissionStatus> statuses = await [
@@ -176,11 +60,18 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
 
     if (!allGranted) {
       print("Error: Not all required permissions were granted.");
-      return false;
+      return;
     }
 
     print("All required permissions granted.");
-    return true;
+    print("Starting Bluetooth scan...");
+    
+  }
+
+  Future startScan() async {
+    FlutterBluePlus.startScan(timeout: Duration(seconds: 5));
+
+    FlutterBluePlus.stopScan();
   }
 
   Future<void> _scanAndConnectBluetooth() async {
@@ -196,15 +87,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
       print("Bluetooth is off. Please enable Bluetooth.");
       return;
     }
-
-    print("Scanning for Bluetooth devices...");
-    try {
-      FlutterBluePlus.startScan(timeout: Duration(seconds: 4));
-    } catch (e) {
-      print("Error starting Bluetooth scan: $e");
-      return;
-    }
-    print("Scanning started.");
+    startScan();
 
     List<ScanResult> scanResults = [];
     var subscription = FlutterBluePlus.scanResults.listen((results) {
@@ -271,7 +154,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
       Map<String, dynamic> game, String ssid, String password) async {
     try {
       List<BluetoothService> services =
-          await _connectedDevice!.discoverServices();
+          await _connectedDevice.discoverServices();
 
       for (var service in services) {
         for (var characteristic in service.characteristics) {
@@ -295,7 +178,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
     }
   }
 
-  Future<void> _checkBluetoothConnection() async {
+  void _checkBluetoothConnection() async {
     try {
       FlutterBluePlus.adapterState.listen((state) {
         if (state == BluetoothAdapterState.on) {
@@ -315,7 +198,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
     }
   }
 
-  Future<void> _sendGameToBoard(Map<String, dynamic> game) async {
+  void _sendGameToBoard(Map<String, dynamic> game) async {
     if (!isBluetoothConnected) {
       print("No board connected. Please connect to a board first.");
       return;
@@ -335,7 +218,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
     );
   }
 
-  Future<void> _transmitGameToBoard(
+  void _transmitGameToBoard(
       Map<String, dynamic> game, String ssid, String password) async {
     try {
       await _updateCharacteristics(game, ssid, password);
@@ -345,6 +228,69 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
       print("Error transmitting game to board: $e");
     }
   }
+
+  
+  void _fetchGames() async {
+    try {
+      final endpoint = "$BASE_URL/player/games?playerID=${widget.playerId}";
+      final response = await http.get(Uri.parse(endpoint), headers: HEADERS);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data != null && data['games'] != null) {
+          setState(() {
+            games = List<Map<String, dynamic>>.from(data['games']);
+          });
+        }
+      } else {
+        print("Failed to fetch games.");
+      }
+    } catch (e) {
+      print("Error fetching games: $e");
+    }
+  }
+
+  void _deleteGame(String gameID) async {
+    try {
+      final endpoint =
+          "$BASE_URL/player/end-game?playerID=${widget.playerId}&gameID=$gameID";
+      final response = await http.post(Uri.parse(endpoint), headers: HEADERS);
+
+      if (response.statusCode == 200) {
+        print("Game deleted successfully.");
+
+        setState(() {
+          games.removeWhere((game) => game['gameID'] == gameID);
+        });
+      } else {
+        print("Failed to delete game.");
+        print(response.statusCode);
+        print(response.body);
+      }
+    } catch (e) {
+      print("Error deleting game: $e");
+    }
+  }
+
+  void _deleteAllGames() async {
+    try {
+      final endpoint =
+          "$BASE_URL/player/end-all-games?playerID=${widget.playerId}";
+      final response = await http.post(Uri.parse(endpoint), headers: HEADERS);
+
+      if (response.statusCode == 200) {
+        print("All games deleted successfully.");
+        setState(() {
+          games.clear();
+        });
+      } else {
+        print("Failed to delete all games.");
+      }
+    } catch (e) {
+      print("Error deleting all games: $e");
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -415,6 +361,65 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
     );
   }
 }
+
+
+class EnterWifiInfoPage extends StatefulWidget {
+  final Function(String ssid, String password) onWifiInfoSubmitted;
+
+  const EnterWifiInfoPage({super.key, required this.onWifiInfoSubmitted});
+
+  @override
+  _EnterWifiInfoPageState createState() => _EnterWifiInfoPageState();
+}
+
+class _EnterWifiInfoPageState extends State<EnterWifiInfoPage> {
+  final TextEditingController ssidController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Enter Wi-Fi Information")),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: ssidController,
+              decoration: const InputDecoration(labelText: "Wi-Fi SSID"),
+            ),
+            TextField(
+              controller: passwordController,
+              decoration: const InputDecoration(labelText: "Wi-Fi Password"),
+              obscureText: true,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                String ssid = ssidController.text;
+                String password = passwordController.text;
+
+                if (ssid.isNotEmpty && password.isNotEmpty) {
+                  widget.onWifiInfoSubmitted(ssid, password);
+                  Navigator.pop(context);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text("Please enter both SSID and password.")),
+                  );
+                }
+              },
+              child: const Text("Submit"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
 
 class JoinGameWithID extends StatelessWidget {
   const JoinGameWithID({super.key});
