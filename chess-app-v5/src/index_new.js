@@ -536,22 +536,22 @@ async function sendPasswordResetEmail(playerID, url, DB) {
 }
 */
 
-const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-        user: "chesslinknu@gmail.com",
-        pass: "Capstone2025",
-    },
-});
 
-transporter.verify((error, success) => {
-    if (error) {
-        console.error("Transporter verification failed:", error);
-    } else {
-        console.log("Transporter is ready to send emails");
-    }
-});
 async function sendResetEmail(email, playerID) {
+    const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+            user: "chesslinknu@gmail.com",
+            pass: "Capstone2025",
+        },
+    });
+    transporter.verify((error, success) => {
+        if (error) {
+            console.error("Transporter verification failed:", error);
+        } else {
+            console.log("Transporter is ready to send emails");
+        }
+    });
     console.log("Attempting to send email to:", email);
 
     const resetLink = `https://thtran13.github.io/ChessLink?playerID=${playerID}/`; // add playerID to URL
@@ -605,7 +605,7 @@ async function insertNewGame(playerID, gameID, DB) {
     try {
         // Fetch current active games
         const query = `SELECT active_games FROM users WHERE id = ?`;
-        const result = await DB.prepare(query).bind(playerID).run();
+        const result = await DB.prepare(query).bind(playerID).first();
         let activeGames = parseCSV(result?.active_games);
         console.log("activeGames" + activeGames.toString());
         // Prevent duplicate game entries
@@ -617,7 +617,8 @@ async function insertNewGame(playerID, gameID, DB) {
         activeGames.push(gameID);
 
         // Update the database
-        console.log("activeGames2" + activeGames.toString());
+        console.log("activeGames2" + toCSV(activeGames));
+
         const updateQuery = `UPDATE users SET active_games = ? WHERE id = ?`;
         await DB.prepare(updateQuery).bind(toCSV(activeGames), playerID).run();
 
