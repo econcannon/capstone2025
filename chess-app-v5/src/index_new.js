@@ -191,8 +191,8 @@ export class ChessGame extends DurableObject {
         try {
             await this.env.DB.prepare(`
                 UPDATE games 
-                SET player_white = ?1, player_black = ?2
-                WHERE id = ?3
+                SET player_white = ?, player_black = ?
+                WHERE id = ?
             `).bind(
                 this.players_color.white,
                 this.players_color.black,
@@ -223,7 +223,7 @@ export class ChessGame extends DurableObject {
         try {
             await this.env.DB.prepare(`
                 INSERT INTO moves (game_id, move_number, from_square, to_square, san)
-                VALUES (?1, ?2, ?3, ?4, ?5)
+                VALUES (?, ?, ?, ?, ?)
             `).bind(
                 this.gameID,
                 this.game.history().length,
@@ -244,10 +244,10 @@ export class ChessGame extends DurableObject {
         try {
             await this.env.DB.prepare(`
                 UPDATE games 
-                SET winner = ?1, 
-                    status = ?2, 
+                SET winner = ?, 
+                    status = ?, 
                     ended_at = CURRENT_TIMESTAMP
-                WHERE id = ?3
+                WHERE id = ?
             `).bind(
                 winner,
                 this.game.isGameOver() ? 
@@ -504,7 +504,7 @@ export default {
             case "connect":
                 return handleConnect(url, request, GAME_ROOM);
             case "replay":
-                return handleReplayGame(request, env.DB);
+                return handleReplayGame(request, url, DB);
             default:
                 return createResponse({message_type: "error", error: "Not Found" }, 404);
         }
@@ -532,7 +532,7 @@ async function handleGameCreation(playerID, url, request, GAME_ROOM, DB) {
     await DB.prepare(`
         INSERT INTO games (id, player_white, status)
         VALUES (?, ?, 'pending')
-    `).bind(gameRoomID.toString(), playerID).run();
+    `).bind(gameString, playerID).run();
 
     await gameRoom.fetch(durable_url);
 
@@ -562,9 +562,11 @@ async function handleConnect(url, request, GAME_ROOM) {
 
 
 // Get game replay data
-async function handleReplayGame(request, DB) {
+async function handleReplayGame(request, url, DB) {
+    if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
+    
     try {
-        const gameID = new URL(request.url).searchParams.get("gameID");
+        const gameID = url.searchParams.get("gameID");
         const { results } = await DB.prepare(`
             SELECT * FROM moves 
             WHERE game_id = ?
@@ -596,7 +598,7 @@ async function handlePlayerActions(url_path, url, request, playerID, DB, GAME_RO
         case "friends":
             return getFriends(playerID, DB);
         case "see-friend-requests":
-            return seeFriendRquests(playerID, DB);
+            return seeFriendRequests(playerID, DB);
         case "send-friend-request":
             return sendFriendRequest(playerID, url, DB);
         case "accept-friend-request":
