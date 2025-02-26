@@ -65,13 +65,10 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
 
     print("All required permissions granted.");
     print("Starting Bluetooth scan...");
-    
   }
 
   Future startScan() async {
-    FlutterBluePlus.startScan(timeout: Duration(seconds: 5));
-
-    FlutterBluePlus.stopScan();
+    FlutterBluePlus.startScan(timeout: Duration(seconds: 10));
   }
 
   Future<void> _scanAndConnectBluetooth() async {
@@ -87,7 +84,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
       print("Bluetooth is off. Please enable Bluetooth.");
       return;
     }
-    startScan();
+    await startScan();
 
     List<ScanResult> scanResults = [];
     var subscription = FlutterBluePlus.scanResults.listen((results) {
@@ -191,11 +188,17 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
             print("Bluetooth is off.");
             isBluetoothConnected = false;
           });
+          _attemptReconnect();
         }
       });
     } catch (e) {
       print("Error checking Bluetooth connection: $e");
     }
+  }
+
+  void _attemptReconnect() async {
+    print("Attempting to reconnect to Bluetooth...");
+    await _scanAndConnectBluetooth();
   }
 
   void _sendGameToBoard(Map<String, dynamic> game) async {
@@ -205,6 +208,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
     }
 
     await _scanAndConnectBluetooth();
+    
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -229,7 +233,6 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
     }
   }
 
-  
   void _fetchGames() async {
     try {
       final endpoint = "$BASE_URL/player/games?playerID=${widget.playerId}";
@@ -290,7 +293,6 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
       print("Error deleting all games: $e");
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -362,7 +364,6 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
   }
 }
 
-
 class EnterWifiInfoPage extends StatefulWidget {
   final Function(String ssid, String password) onWifiInfoSubmitted;
 
@@ -418,8 +419,6 @@ class _EnterWifiInfoPageState extends State<EnterWifiInfoPage> {
     );
   }
 }
-
-
 
 class JoinGameWithID extends StatelessWidget {
   const JoinGameWithID({super.key});

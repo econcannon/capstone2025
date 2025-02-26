@@ -151,13 +151,6 @@ class ButtonPage extends StatelessWidget {
             SizedBox(
               width: 300,
               child: ElevatedButton(
-                onPressed: () {},
-                child: const Text('Scan For BlueTooth Device'),
-              ),
-            ),
-            SizedBox(
-              width: 300,
-              child: ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
                 },
@@ -207,13 +200,6 @@ class AuthMainMenu extends StatelessWidget {
                   );
                 },
                 child: const Text('Manage Games'),
-              ),
-            ),
-            SizedBox(
-              width: 300,
-              child: ElevatedButton(
-                onPressed: () {},
-                child: const Text('Scan for BlueTooth Device'),
               ),
             ),
             SizedBox(
@@ -269,13 +255,6 @@ class ManageGame extends StatelessWidget {
                       ));
                 },
                 child: const Text('Join Game'),
-              ),
-            ),
-            SizedBox(
-              width: 300,
-              child: ElevatedButton(
-                onPressed: () {},
-                child: const Text('Send Game to Board'),
               ),
             ),
             SizedBox(
