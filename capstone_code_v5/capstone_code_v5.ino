@@ -160,22 +160,13 @@ void readBLECredentials() {
   }
 }
 
-// Reconnect WiFi if needed
-void connectToWiFi() {
-  Serial.print("Connecting to WiFi: ");
-  Serial.println(ssid);
-
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000); 
-    Serial.print(".");
-    WiFi.begin(ssid, password);
-  }
-  Serial.println("\nConnected to WiFi");
-}
-
 // Join the WebSocket game
 void joinGame() {
+
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    connectToWiFi();
+  }
   char wsURL[100];
   snprintf(wsURL, sizeof(wsURL), "/connect?gameID=%s&playerID=%s", gameID, playerID);
   Serial.println("wsURL: ");
@@ -194,6 +185,22 @@ void joinGame() {
     Serial.println("WebSocket connection failed.");
   }
 }
+
+
+// Reconnect WiFi if needed
+void connectToWiFi() {
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(ssid);
+
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000); 
+    Serial.print(".");
+    WiFi.begin(ssid, password);
+  }
+  Serial.println("\nConnected to WiFi");
+}
+
 
 // Reset Game (triggered by BLE reset signal)
 void resetGame() {
