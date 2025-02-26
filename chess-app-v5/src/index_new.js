@@ -508,7 +508,7 @@ async function insertNewGame(playerID, gameID, DB) {
     try {
         // Fetch current active games
         const query = `SELECT active_games FROM users WHERE id = ?`;
-        const result = await DB.prepare(query).bind(playerID).run();
+        const result = await DB.prepare(query).bind(playerID).first();
         let activeGames = parseCSV(result?.active_games);
 
         // Prevent duplicate game entries
@@ -521,7 +521,7 @@ async function insertNewGame(playerID, gameID, DB) {
 
         // Update the database
         const updateQuery = `UPDATE users SET active_games = ? WHERE id = ?`;
-        await DB.prepare(updateQuery).bind(toCSV(activeGames), playerID).run();
+        await DB.prepare(updateQuery).bind(toCSV(activeGames), playerID).first();
 
         return createResponse({ success: true, message: "Game added to active games." });
     } catch (error) {
@@ -542,7 +542,7 @@ async function removeGameFromActive(playerID, url, request, DB, GAME_ROOM) {
     try {
         // Step 1: Fetch current active games
         const query = `SELECT active_games FROM users WHERE id = ?`;
-        const result = await DB.prepare(query).bind(playerID).run();
+        const result = await DB.prepare(query).bind(playerID).first();
         console.log("result" + JSON.stringify(result));
         let activeGames = parseCSV(result?.results[0]?.active_games);
         console.log("activeGames"+ activeGames.toString());
@@ -712,7 +712,7 @@ async function registerPlayer(playerID, url, DB) {
 async function getFriends(playerID, DB) {
     const query = `SELECT friends FROM users WHERE id = ?`;
     try {
-        const result = await DB.prepare(query).bind(playerID).run();
+        const result = await DB.prepare(query).bind(playerID).first();
         return createResponse({ friends: parseCSV(result?.friends) });
     } catch (error) {
         console.error("Error retrieving friends:", error);
@@ -724,7 +724,7 @@ async function getFriends(playerID, DB) {
 async function seeFriendRequests(playerID, DB) {
     const query = `SELECT incoming_requests, outgoing_requests FROM users WHERE id = ?`;
     try {
-        const result = await DB.prepare(query).bind(playerID).run();
+        const result = await DB.prepare(query).bind(playerID).first();
         return createResponse({
             incoming_requests: parseCSV(result?.incoming_requests),
             outgoing_requests: parseCSV(result?.outgoing_requests)
@@ -740,12 +740,12 @@ async function sendFriendRequest(playerID, friendID, DB) {
     try {
         // Fetch outgoing requests for sender
         let query = `SELECT outgoing_requests FROM users WHERE id = ?`;
-        let sender = await DB.prepare(query).bind(playerID).run();
+        let sender = await DB.prepare(query).bind(playerID).first();
         let outgoingRequests = parseCSV(sender?.outgoing_requests);
 
         // Fetch incoming requests for receiver
         query = `SELECT incoming_requests FROM users WHERE id = ?`;
-        let receiver = await DB.prepare(query).bind(friendID).run();
+        let receiver = await DB.prepare(query).bind(friendID).first();
         let incomingRequests = parseCSV(receiver?.incoming_requests);
 
         // Prevent duplicate requests
@@ -776,13 +776,13 @@ async function acceptFriendRequest(playerID, friendID, DB) {
     try {
         // Fetch incoming requests and friends for accepting player
         let query = `SELECT incoming_requests, friends FROM users WHERE id = ?`;
-        let player = await DB.prepare(query).bind(playerID).run();
+        let player = await DB.prepare(query).bind(playerID).first();
         let incomingRequests = parseCSV(player?.incoming_requests);
         let friends = parseCSV(player?.friends);
 
         // Fetch outgoing requests and friends for sender
         query = `SELECT outgoing_requests, friends FROM users WHERE id = ?`;
-        let friend = await DB.prepare(query).bind(friendID).run();
+        let friend = await DB.prepare(query).bind(friendID).first();
         let outgoingRequests = parseCSV(friend?.outgoing_requests);
         let friendFriends = parseCSV(friend?.friends);
 
@@ -805,11 +805,11 @@ async function acceptFriendRequest(playerID, friendID, DB) {
 
         // Update accepting player's records
         query = `UPDATE users SET incoming_requests = ?, friends = ? WHERE id = ?`;
-        await DB.prepare(query).bind(toCSV(incomingRequests), toCSV(friends), playerID).run();
+        await DB.prepare(query).bind(toCSV(incomingRequests), toCSV(friends), playerID).first();
 
         // Update sender's records
         query = `UPDATE users SET outgoing_requests = ?, friends = ? WHERE id = ?`;
-        await DB.prepare(query).bind(toCSV(outgoingRequests), toCSV(friendFriends), friendID).run();
+        await DB.prepare(query).bind(toCSV(outgoingRequests), toCSV(friendFriends), friendID).first();
 
         return createResponse({ success: true, message: "Friend request accepted." });
     } catch (error) {
@@ -850,7 +850,7 @@ async function challengeFriend(playerID, url, DB) {
 
             // Update the sender's outgoing challenges
             query = `UPDATE users SET outgoing_challenges = ? WHERE id = ?`;
-            await DB.prepare(query).bind(toCSV(outgoingChallenges), playerID).run();
+            await DB.prepare(query).bind(toCSV(outgoingChallenges), playerID).first();
         }
 
         if (!incomingChallenges.includes(playerID)) {
@@ -859,7 +859,7 @@ async function challengeFriend(playerID, url, DB) {
 
             // Update the recipient's incoming challenges
             query = `UPDATE users SET incoming_challenges = ? WHERE id = ?`;
-            await DB.prepare(query).bind(toCSV(incomingChallenges), friendID).run();
+            await DB.prepare(query).bind(toCSV(incomingChallenges), friendID).first();
         }
 
         if (!updated) {
@@ -903,10 +903,10 @@ async function acceptChallenge(playerID, url, GAME_ROOM, DB) {
 
         // Update the database to remove the challenge
         query = `UPDATE users SET incoming_challenges = ? WHERE id = ?`;
-        await DB.prepare(query).bind(toCSV(incomingChallenges), playerID).run();
+        await DB.prepare(query).bind(toCSV(incomingChallenges), playerID).first();
 
         query = `UPDATE users SET outgoing_challenges = ? WHERE id = ?`;
-        await DB.prepare(query).bind(toCSV(outgoingChallenges), friendID).run();
+        await DB.prepare(query).bind(toCSV(outgoingChallenges), friendID).first();
         
         const gameID = (await handleGameCreation(playerID, url, null, GAME_ROOM, DB, 0)).json().gameID;
         if (gameID) {
