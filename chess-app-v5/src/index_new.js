@@ -129,7 +129,7 @@ export class ChessGame extends DurableObject {
             }
             if (!this.players.has(playerID)) {
                 this.players.add(playerID);
-                if (ai && this.players.length === 1) {
+                if (ai && this.players.size === 1) {
                     console.log("Entered here: " + ai.toString());
                     this.players.add("AI");
                     await this.storage.put("ai", true);
@@ -523,16 +523,20 @@ async function handleGameCreation(playerID, url, request, GAME_ROOM, DB) {
     const success = await insertNewGame(playerID, gameString, DB);
     let ai = false;
     ai = url.searchParams.get("ai")?.toLowerCase() === "true";
-    const difficulty = url.searchParams.get("difficulty");
+    const durable_url = new URL("/join-game", url.origin);
+    durable_url.searchParams.append("playerID", playerID);
+    durable_url.searchParams.append("ai", ai);
+    durable_url.searchParams.append("depth", url.searchParams.get("depth"));
+    
 
     await DB.prepare(`
         INSERT INTO games (id, player_white, status)
         VALUES (?, ?, 'pending')
     `).bind(gameRoomID.toString(), playerID).run();
 
-    await gameRoom.fetch(
-        new URL("/join-game?playerID=" + playerID + "&ai=" + ai + "&difficulty=" + difficulty, url.origin)
-    );
+    await gameRoom.fetch(durable_url);
+
+   
     if (success) {
         return createResponse({ gameID: gameString });
     } else {
