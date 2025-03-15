@@ -2,14 +2,15 @@ import 'dart:convert';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'main.dart';
-
-void updateHeaders(String TOKEN) {
-  HEADERS['authorization'] = TOKEN;
-}
+import 'components/constants.dart';
+import 'game/main_menu.dart';
 
 class LogInPage extends StatelessWidget {
   const LogInPage({super.key});
+
+  void updateHeaders(String TOKEN) {
+    HEADERS['authorization'] = TOKEN;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,7 +73,7 @@ class LogInPage extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (context) => const AuthMainMenu()),
+                          builder: (context) => const MainMenu()),
                     );
                   } else {
                     print("Invalid username or password.");
@@ -254,7 +255,7 @@ class ResetPassword extends StatelessWidget {
                     print('Token: $token');
                     TOKEN = token;
                     PLAYERID = playerId;
-                    updateHeaders(token);
+                    //updateHeaders(token);
                     print("Password reset email sent.");
                     // Navigator.push(
                     //   context,

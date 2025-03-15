@@ -2,10 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
 import 'package:bishop/bishop.dart' as bishop;
-import 'package:chessapp/main.dart';
 import 'package:flutter/material.dart';
 import 'package:square_bishop/square_bishop.dart';
 import 'package:squares/squares.dart';
+import '../components/constants.dart';
 
 class GamePage extends StatefulWidget {
   final String gameId;

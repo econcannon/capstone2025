@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'main.dart';
+import 'components/constants.dart';
 
 class FriendsPage extends StatefulWidget {
   const FriendsPage({super.key});

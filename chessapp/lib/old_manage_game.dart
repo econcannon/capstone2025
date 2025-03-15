@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'main.dart';
-import 'chess.dart';
+import 'game/chess.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter/services.dart'; 
-import 'package:get/get.dart';
+import 'components/constants.dart';
+import 'package:chessapp/game/join_game/wifi.dart';
 
 class ViewOngoingGame extends StatefulWidget {
   final String playerId;
@@ -20,13 +19,6 @@ class ViewOngoingGame extends StatefulWidget {
 class _ViewOngoingGameState extends State<ViewOngoingGame> {
   bool isBluetoothConnected = false;
   late BluetoothDevice _connectedDevice;
-
-  String SSID_CHAR_UUID = "8266532f-1fe1-4af9-97e1-3b7c04ef8201";
-  String PASSWORD_CHAR_UUID = "91abf729-1b45-4147-b8f7-b93620e8bce1";
-  String GAMEID_CHAR_UUID = "5f91bb09-093c-42d7-b615-a2b110369a2e";
-  String PLAYERID_CHAR_UUID = "bcf9cb8c-78f4-4b22-8f2c-ad5df34a34cd";
-  String RESET_CHAR_UUID = "cfb3a8c4-85c7-4e9f-9f0b-b1c6e22b15e2";
-  String ARDUINO_NAME = "GIGA_R1_Bluetooth";
 
   @override
   void initState() {
@@ -208,7 +200,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
     }
 
     await _scanAndConnectBluetooth();
-    
+
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -360,62 +352,6 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> {
                 );
               },
             ),
-    );
-  }
-}
-
-class EnterWifiInfoPage extends StatefulWidget {
-  final Function(String ssid, String password) onWifiInfoSubmitted;
-
-  const EnterWifiInfoPage({super.key, required this.onWifiInfoSubmitted});
-
-  @override
-  _EnterWifiInfoPageState createState() => _EnterWifiInfoPageState();
-}
-
-class _EnterWifiInfoPageState extends State<EnterWifiInfoPage> {
-  final TextEditingController ssidController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Enter Wi-Fi Information")),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              controller: ssidController,
-              decoration: const InputDecoration(labelText: "Wi-Fi SSID"),
-            ),
-            TextField(
-              controller: passwordController,
-              decoration: const InputDecoration(labelText: "Wi-Fi Password"),
-              obscureText: true,
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                String ssid = ssidController.text;
-                String password = passwordController.text;
-
-                if (ssid.isNotEmpty && password.isNotEmpty) {
-                  widget.onWifiInfoSubmitted(ssid, password);
-                  Navigator.pop(context);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text("Please enter both SSID and password.")),
-                  );
-                }
-              },
-              child: const Text("Submit"),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

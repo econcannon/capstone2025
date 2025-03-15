@@ -45,6 +45,10 @@ dependencies:
   flutter_blue_plus: ^1.4.0
   permission_handler: ^11.4.0
   get: ^4.6.5
+  hexcolor: ^3.0.1
+  email_validator: ^2.1.17
+  google_fonts: ^4.0.1
+  logger: ^1.0.0
 
 dev_dependencies:
   flutter_test:
