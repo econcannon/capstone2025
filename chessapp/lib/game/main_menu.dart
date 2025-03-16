@@ -7,10 +7,12 @@ import 'package:hexcolor/hexcolor.dart';
 
 // Project imports
 import 'package:chessapp/components/constants.dart';
+import 'package:chessapp/components/menu_button.dart';
 import 'package:chessapp/friends.dart';
 import 'package:chessapp/game/game_list.dart';
 import 'package:chessapp/game/game_mode/choose_opponent.dart';
 import 'package:chessapp/game/chess.dart';
+import 'package:chessapp/game/stats_page.dart';
 
 class MainMenu extends StatelessWidget {
   const MainMenu({super.key});
@@ -74,20 +76,17 @@ class MainMenu extends StatelessWidget {
                 ),
               ),
             ),
-            _buildMenuButton(
-              context,
+            BuildMenuButton(
               label: 'Join Game by ID',
               onPressed: () {
                 _showJoinGameDialog(context);
               },
             ),
-            _buildMenuButton(
-              context,
+            BuildMenuButton(
               label: 'Join Public Game',
               onPressed: () {},
             ),
-            _buildMenuButton(
-              context,
+            BuildMenuButton(
               label: 'View Your Ongoing Games',
               onPressed: () {
                 Navigator.push(
@@ -98,8 +97,7 @@ class MainMenu extends StatelessWidget {
                 );
               },
             ),
-            _buildMenuButton(
-              context,
+            BuildMenuButton(
               label: 'Friends',
               onPressed: () {
                 Navigator.push(
@@ -110,8 +108,18 @@ class MainMenu extends StatelessWidget {
                 );
               },
             ),
-            _buildMenuButton(
-              context,
+            BuildMenuButton(
+              label: 'Testing Stats Page',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PlayerStatsScreen(),
+                  ),
+                );
+              },
+            ),
+            BuildMenuButton(
               label: 'Log out',
               onPressed: () {
                 Navigator.of(context).popUntil((route) => route.isFirst);
@@ -131,10 +139,10 @@ class MainMenu extends StatelessWidget {
       builder: (context) {
         return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20), 
+            borderRadius: BorderRadius.circular(20),
           ),
           child: SizedBox(
-            width: 700, 
+            width: 700,
             height: 220,
             child: Padding(
               padding: const EdgeInsets.all(20),
@@ -166,8 +174,8 @@ class MainMenu extends StatelessWidget {
                   Align(
                     alignment: Alignment.center,
                     child: SizedBox(
-                      width: 120, 
-                      height: 50, 
+                      width: 120,
+                      height: 50,
                       child: ElevatedButton(
                         onPressed: () {
                           GAMEID = gameIdController.text;
@@ -206,33 +214,4 @@ class MainMenu extends StatelessWidget {
       },
     );
   }
-
-  Widget _buildMenuButton(BuildContext context,
-      {required String label, required VoidCallback onPressed}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: SizedBox(
-        width: 332,
-        height: 50,
-        child: ElevatedButton(
-          onPressed: onPressed,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: HexColor("#44564A"),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 28),
-          ),
-          child: Text(
-            label,
-            style: GoogleFonts.dmSans(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
+ }
