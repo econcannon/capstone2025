@@ -57,7 +57,7 @@ class _LogInPage extends State<LogInPage> {
         updateHeaders(token);
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const MainMenu()),
+          MaterialPageRoute(builder: (context) =>  const MainMenu()),
         );
       } else {
         logger.e("Invalid username or password.");

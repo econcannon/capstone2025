@@ -14,7 +14,6 @@ import 'package:chessapp/components/constants.dart';
 import '../components/textfield.dart';
 import 'login.dart';
 
-
 var logger = Logger();
 
 class SignUpPage extends StatefulWidget {
@@ -46,42 +45,82 @@ class _SignUpPage extends State<SignUpPage> {
     logger.i('Player ID: $playerId');
     logger.i('Password: $password');
     logger.i('Player Email: $email');
+    var passwordValidation = isValidPassword(password);
 
     if (playerId.isEmpty || password.isEmpty || email.isEmpty) {
       logger.i("All fields are required.");
       return;
-    }
-    var passwordValidation = isValidPassword(password);
-    if (passwordValidation["valid"] as bool == false) {
+    } else if (passwordValidation["valid"] as bool == false) {
       logger.i(passwordValidation["message"]);
       logger.i("Not valid Password");
       showErrorMessage("Not valid password");
-    }
-
-    if (!EmailValidator.validate(email)) {
+    } else if (!EmailValidator.validate(email)) {
       logger.i("Not valid Email");
       showErrorMessage("Not valid Email");
-    }
+    } else {
+      try {
+        final endpoint =
+            "$BASE_URL/player/register?playerID=$playerId&email=$email&password=$password";
+        final response = await http.post(Uri.parse(endpoint), headers: HEADERS);
 
-    try {
-      final endpoint =
-          "$BASE_URL/player/register?playerID=$playerId&email=$email&password=$password";
-      final response = await http.post(Uri.parse(endpoint), headers: HEADERS);
-
-      if (response.statusCode == 200) {
-        print("Registration successful!");
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const LogInPage()),
-        );
-      } else {
+        if (response.statusCode == 200) {
+          logger.i("Registration successful!");
+          _showSuccessPopup;
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const LogInPage()),
+          );
+        } else {
+          showErrorMessage("Registration failed");
+          logger.e("Registration failed.");
+        }
+      } catch (e) {
         showErrorMessage("Registration failed");
-        logger.e("Registration failed.");
+        logger.e("Error logging in: $e");
       }
-    } catch (e) {
-      showErrorMessage("Registration failed");
-      logger.e("Error logging in: $e");
     }
+  }
+
+  void _showSuccessPopup(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        Future.delayed(const Duration(seconds: 3), () {
+          Navigator.of(context).pop(); 
+        });
+
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: SizedBox(
+            width: 300,
+            height: 150,
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.check_circle,
+                    color: Colors.green,
+                    size: 50,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Success Sign Up!",
+                    style: GoogleFonts.dmSans(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void showErrorMessage(String message) {
