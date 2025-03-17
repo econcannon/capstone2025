@@ -90,7 +90,7 @@ export class ChessGame extends DurableObject {
         this.ai = storedAi || false;
         this.depth = storedDepth || 10;
         this.gameID = storedGameID || null;
-        console.log("initializing game state ai: " + this.ai.toString() + " players: " + this.players.toString() + " colors: " + JSON.stringify(this.players_color));
+        console.log("initializing game state ai: " + this.ai.toString() + " players: " + Array.from(this.players).join(", ") + " colors: " + JSON.stringify(this.players_color));
     }
 
     async fetch(request) {
@@ -112,7 +112,7 @@ export class ChessGame extends DurableObject {
                 const depth = parseInt(url.searchParams.get("depth"), 10);
                 return this.handleJoinGame(playerID, ai, depth);
             case "/game-info":
-                return createResponse(standardGameInfo(this.game, playerID, this.players_color, this.players));
+                return createResponse(standardGameInfo(this.game, playerID, this.players_color, Array.from(this.players).join(", ")));
             case "/update-game-info":
                 return this.handleUpdateGame(request);
             default:
@@ -146,7 +146,7 @@ export class ChessGame extends DurableObject {
                 return createResponse({message_type: "error", error: "You are already in this game!" }, 403);
             }
 
-            return createResponse(standardGameInfo(this.game, playerID, this.players_color, this.players));
+            return createResponse(standardGameInfo(this.game, playerID, this.players_color, Array.from(this.players).join(", ")));
         } catch (error) {
             return createResponse({message_type: "error", error: "Error updating durable object storage." }, 500);
         }
@@ -211,7 +211,7 @@ export class ChessGame extends DurableObject {
         }
 
         await this.storage.put("players_color", this.players_color);
-        await serverSocket.send(JSON.stringify(standardGameInfo(this.game, playerID, this.players_color, this.players)));
+        await serverSocket.send(JSON.stringify(standardGameInfo(this.game, playerID, this.players_color, Array.from(this.players).join(", "))));
 
         return new Response(null, { status: 101, webSocket: clientSocket });
     }
@@ -249,7 +249,7 @@ export class ChessGame extends DurableObject {
         if (result) {
             await this.storage.put("gameState", this.game.fen());
     
-            const confirmationPayload = JSON.stringify(standardGameInfo(this.game, playerID, this.players_color, this.players, "confirmation"));
+            const confirmationPayload = JSON.stringify(standardGameInfo(this.game, playerID, this.players_color, Array.from(this.players).join(", "), "confirmation"));
             ws.send(confirmationPayload);
             console.log("Process move: " + this.ai.toString());
             if (this.ai) {
@@ -306,7 +306,7 @@ export class ChessGame extends DurableObject {
             await this.storage.put("gameState", this.game.fen());
 
             const aiMovePayload = JSON.stringify(
-                standardGameInfo(this.game, playerID, this.players_color, this.players, "game-state")
+                standardGameInfo(this.game, playerID, this.players_color, Array.from(this.players).join(", "), "game-state")
             );
             ws.send(aiMovePayload);
         } else {
@@ -351,7 +351,7 @@ export class ChessGame extends DurableObject {
 
     // Broadcast message to the opponent only
     async broadcastMove(ws, moveResult, senderID) {
-        const payload = this.generateMovePayload(this.game, senderID, this.players_color, this.players, moveResult);
+        const payload = this.generateMovePayload(this.game, senderID, this.players_color, Array.from(this.players).join(", "), moveResult);
         await this.sendToOpponent(ws, payload);
     }
 
