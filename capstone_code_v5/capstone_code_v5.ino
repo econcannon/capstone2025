@@ -176,6 +176,8 @@ void connectToWiFi() {
 
 // Join the WebSocket game
 void joinGame() {
+  if(WiFi.status() != WL_CONNECTED) connectToWiFi();
+
   char wsURL[100];
   snprintf(wsURL, sizeof(wsURL), "/connect?gameID=%s&playerID=%s", gameID, playerID);
   Serial.println("wsURL: ");
@@ -314,6 +316,7 @@ void sendMove() {
 
 
 bool reconnectWebSocket() {
+  if (WiFi.status() != WL_CONNECTED) connectToWiFi();
   if (wsClient.connected()) {
     return true;  // Already connected
   }

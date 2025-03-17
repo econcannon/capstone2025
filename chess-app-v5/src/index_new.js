@@ -595,7 +595,7 @@ async function removeAllGames(playerID, request, DB, GAME_ROOM) {
     try {
         // Step 1: Fetch all active games for the player
         const query = `SELECT active_games FROM users WHERE id = ?`;
-        const result = await DB.prepare(query).bind(playerID).run();
+        const result = await DB.prepare(query).bind(playerID).first();
         let activeGames = parseCSV(result?.active_games);
 
         if (activeGames.length === 0) {
