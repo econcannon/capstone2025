@@ -4,22 +4,36 @@ import 'package:flutter/material.dart';
 // Third-party package imports
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hexcolor/hexcolor.dart';
+import 'package:logger/logger.dart';
 
 // Project imports
 import 'package:chessapp/components/constants.dart';
 import 'package:chessapp/components/menu_button.dart';
-import 'package:chessapp/friends.dart';
-import 'package:chessapp/game/game_list.dart';
-import 'package:chessapp/game/game_mode/choose_opponent.dart';
+import 'package:chessapp/game/main_menu_component/game_list.dart';
+import 'package:chessapp/game/challenge/choose_opponent.dart';
+import 'package:chessapp/components/popup_menu.dart';
+import 'package:chessapp/game/main_menu_component/player_stats.dart';
+import 'package:chessapp/game/main_menu_component/side_menu.dart';
 import 'package:chessapp/game/chess.dart';
-import 'package:chessapp/game/stats_page.dart';
 
-class MainMenu extends StatelessWidget {
+var logger = Logger();
+
+class MainMenu extends StatefulWidget {
   const MainMenu({super.key});
+
+  @override
+  _MainMenu createState() => _MainMenu();
+}
+
+class _MainMenu extends State<MainMenu> {
+  void iniitState() {
+    super.initState();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      endDrawer: const SideMenu(),
       appBar: AppBar(
         backgroundColor: HexColor("#D0B38B"),
         leading: IconButton(
@@ -38,6 +52,23 @@ class MainMenu extends StatelessWidget {
           ),
         ),
         centerTitle: true,
+        actions: [
+          Builder(
+            builder: (context) => IconButton(
+              icon: CircleAvatar(
+                backgroundColor: HexColor('#44564A'),
+                child: Text(
+                  PLAYERID[0],
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
+              onPressed: () {
+                Scaffold.of(context).openEndDrawer(); //call side menu
+              },
+            ),
+          ),
+        ],
       ),
       body: Center(
         child: Column(
@@ -79,7 +110,22 @@ class MainMenu extends StatelessWidget {
             BuildMenuButton(
               label: 'Join Game by ID',
               onPressed: () {
-                _showJoinGameDialog(context);
+                showDialog(
+                  context: context,
+                  builder: (context) => InputDialog(
+                    title: "Enter Game ID",
+                    hintText: "Game ID",
+                    buttonText: "Join",
+                    onConfirm: (gameId) {
+                      GAMEID = gameId;
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => GamePage(gameId: GAMEID)),
+                      );
+                    },
+                  ),
+                );
               },
             ),
             BuildMenuButton(
@@ -97,17 +143,17 @@ class MainMenu extends StatelessWidget {
                 );
               },
             ),
-            BuildMenuButton(
-              label: 'Friends',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const FriendsPage(),
-                  ),
-                );
-              },
-            ),
+            // BuildMenuButton(
+            //   label: 'Friends',
+            //   onPressed: () {
+            //     Navigator.push(
+            //       context,
+            //       MaterialPageRoute(
+            //         builder: (context) => const FriendsPage(),
+            //       ),
+            //     );
+            //   },
+            // ),
             BuildMenuButton(
               label: 'Testing Stats Page',
               onPressed: () {
@@ -130,88 +176,4 @@ class MainMenu extends StatelessWidget {
       ),
     );
   }
-
-  void _showJoinGameDialog(BuildContext context) {
-    final TextEditingController gameIdController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: SizedBox(
-            width: 700,
-            height: 220,
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    "Enter Game ID:",
-                    style: GoogleFonts.dmSans(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  TextField(
-                    controller: gameIdController,
-                    textAlign: TextAlign.center,
-                    decoration: InputDecoration(
-                      hintText: "Game ID",
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                          vertical: 12, horizontal: 16),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Align(
-                    alignment: Alignment.center,
-                    child: SizedBox(
-                      width: 120,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          GAMEID = gameIdController.text;
-                          if (GAMEID.isNotEmpty) {
-                            Navigator.pop(context);
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => GamePage(gameId: GAMEID),
-                              ),
-                            );
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: HexColor("#44564A"),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: Text(
-                          "Join",
-                          style: GoogleFonts.dmSans(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
- }
+}

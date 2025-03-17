@@ -6,6 +6,7 @@ import 'package:logger/logger.dart';
 var logger = Logger();
 
 mixin CreateGame {
+  
   Future<bool> createGame(bool ai, Uri endpoint) async {
     try {
       logger.i(TOKEN);

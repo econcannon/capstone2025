@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'chess.dart';
-import '../components/constants.dart';
-import 'package:chessapp/game/join_game/bluetooth.dart';
-import 'package:chessapp/game/join_game/wifi.dart';
+import '../chess.dart';
+import '../../components/constants.dart';
+import 'package:chessapp/game/connection/bluetooth.dart';
+import 'package:chessapp/game/connection/wifi.dart';
 
 class ViewOngoingGame extends StatefulWidget {
   final String playerId;

@@ -5,7 +5,7 @@ import 'game/chess.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'components/constants.dart';
-import 'package:chessapp/game/join_game/wifi.dart';
+import 'package:chessapp/game/connection/wifi.dart';
 
 class ViewOngoingGame extends StatefulWidget {
   final String playerId;
