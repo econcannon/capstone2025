@@ -381,7 +381,7 @@ export default {
         const playerID = url.searchParams.get("playerID");
         const { GAME_ROOM, DB } = env;
 
-        const url_path = url.pathname.split('/');
+        const url_path = url.pathname.toLowerCase().split('/');
         
         switch (url_path[1]) {
             case "create":
