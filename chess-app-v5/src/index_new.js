@@ -463,6 +463,10 @@ async function handlePlayerActions(url_path, url, request, playerID, DB, GAME_RO
             return challengeFriend(playerID, url, DB);
         case "accept-challenge":
             return acceptChallenge(playerID, url, DB, GAME_ROOM);
+        case "game":
+            return getGameData(playerID, url, request, DB);
+        case "stats":
+            return getPlayerStats(playerID, DB);
         default:
             return createResponse({message_type: "error", error: "Invalid action" }, 400);
     }
@@ -921,3 +925,34 @@ async function acceptChallenge(playerID, url, GAME_ROOM, DB) {
     }
 }
 
+
+async function getGameData(playerID, url, request, DB) {
+    if (!playerID) return createResponse({message_type: "error", error: "Player ID is required." }, 400);
+    if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
+
+    const gameID = url.searchParams.get("gameID");
+    if (!gameID) return createResponse({message_type: "error", error: "Game ID is required." }, 400);
+
+    const query = `SELECT * FROM games WHERE id = ?;`;
+    const result = await DB.prepare(query).bind(gameID).first();
+
+    if (result) {
+        return createResponse(result);
+    } else {
+        return createResponse({message_type: "error", error: "Game not found." }, 404);
+    }
+}
+
+
+async function getPlayerStats(playerID, DB) {
+    if (!playerID) return createResponse({message_type: "error", error: "Player ID is required." }, 400);
+
+    const query = `SELECT * FROM users WHERE id = ?;`;
+    const result = await DB.prepare(query).bind(playerID).first();
+
+    if (result) {
+        return createResponse(result);
+    } else {
+        return createResponse({message_type: "error", error: "Player not found." }, 404);
+    }
+}
