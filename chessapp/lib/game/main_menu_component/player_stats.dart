@@ -1,5 +1,4 @@
 // Flutter package imports
-import 'package:chessapp/game/main_menu.dart';
 import 'package:flutter/material.dart';
 
 // Third-party package imports
@@ -10,6 +9,7 @@ import 'package:hexcolor/hexcolor.dart';
 import 'package:chessapp/game/get_data/stats.dart';
 import 'package:chessapp/components/constants.dart';
 import 'package:chessapp/game/main_menu_component/game_stats.dart';
+import 'package:chessapp/game/main_menu.dart';
 
 class PlayerStatsScreen extends StatefulWidget {
   const PlayerStatsScreen({super.key});
@@ -52,14 +52,14 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen>
         backgroundColor: HexColor("#44564A"),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          color: Colors.black,
+          color: Colors.white,
           onPressed: () {
             Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => MainMenu(),
-                  ),
-                );
+              context,
+              MaterialPageRoute(
+                builder: (context) => MainMenu(),
+              ),
+            );
           },
         ),
         title: Text(
@@ -67,7 +67,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen>
           style: GoogleFonts.dmSans(
             fontSize: 20,
             fontWeight: FontWeight.w700,
-            color: Colors.black,
+            color: Colors.white,
           ),
         ),
         centerTitle: true,

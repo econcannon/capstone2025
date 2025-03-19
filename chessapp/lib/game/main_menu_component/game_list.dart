@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:google_fonts/google_fonts.dart';
+import 'package:hexcolor/hexcolor.dart';
+import 'package:logger/logger.dart';
+
 import 'dart:convert';
 import '../chess.dart';
 import '../../components/constants.dart';
 import 'package:chessapp/game/connection/bluetooth.dart';
 import 'package:chessapp/game/connection/wifi.dart';
+import 'package:chessapp/game/main_menu.dart';
+
+var logger = Logger();
 
 class ViewOngoingGame extends StatefulWidget {
   final String playerId;
@@ -15,8 +22,8 @@ class ViewOngoingGame extends StatefulWidget {
   _ViewOngoingGameState createState() => _ViewOngoingGameState();
 }
 
-class _ViewOngoingGameState extends State<ViewOngoingGame> with BluetoothHandler {
-
+class _ViewOngoingGameState extends State<ViewOngoingGame>
+    with BluetoothHandler {
   @override
   void initState() {
     super.initState();
@@ -28,6 +35,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> with BluetoothHandler
     checkBluetoothConnection();
     _fetchGames();
   }
+
   List<Map<String, dynamic>> games = [];
 
   void _fetchGames() async {
@@ -91,7 +99,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> with BluetoothHandler
     }
   }
 
-   void _sendGameToBoard(Map<String, dynamic> game) async {
+  void _sendGameToBoard(Map<String, dynamic> game) async {
     if (!isBluetoothConnected) {
       print("No board connected. Please connect to a board first.");
       return;
@@ -116,10 +124,32 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> with BluetoothHandler
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Ongoing Games'),
+        backgroundColor: HexColor("#44564A"),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          color: Colors.white,
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => MainMenu(),
+              ),
+            );
+          },
+        ),
+        title: Text(
+          "Chess Link",
+          style: GoogleFonts.dmSans(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+        ),
+        centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.delete),
+            color: Colors.white, 
             onPressed: _deleteAllGames,
           ),
         ],
@@ -133,16 +163,38 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> with BluetoothHandler
                 return Card(
                   margin: const EdgeInsets.all(8.0),
                   elevation: 4.0,
+                  color: HexColor("#EDEDED"),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("Game ID: ${game['gameID']}"),
+                        Text("Game ID: ${game['gameID']}",
+                            style: GoogleFonts.dmSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              height: 1.2,
+                              letterSpacing: 0,
+                              color: Colors.black,
+                            )),
                         const SizedBox(height: 8.0),
-                        Text("Players: ${game['players']}"),
+                        Text("Players: ${game['players']}",
+                            style: GoogleFonts.dmSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              height: 1.2,
+                              letterSpacing: 0,
+                              color: Colors.black,
+                            )),
                         const SizedBox(height: 8.0),
-                        Text("Turn: ${game['turn']}"),
+                        Text("Turn: ${game['turn']}",
+                            style: GoogleFonts.dmSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              height: 1.2,
+                              letterSpacing: 0,
+                              color: Colors.black,
+                            )),
                         const SizedBox(height: 16.0),
                         Center(
                           child: Row(
@@ -150,6 +202,13 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> with BluetoothHandler
                             children: [
                               ElevatedButton(
                                 onPressed: () => _deleteGame(game['gameID']),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: HexColor("#44564A"),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ),
                                 child: const Text('Delete'),
                               ),
                               ElevatedButton(
@@ -163,10 +222,24 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> with BluetoothHandler
                                             GamePage(gameId: GAMEID)),
                                   );
                                 },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: HexColor("#44564A"),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ),
                                 child: const Text('Join'),
                               ),
                               ElevatedButton(
                                 onPressed: () => _sendGameToBoard(game),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: HexColor("#44564A"),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ),
                                 child: const Text('Send to Board'),
                               ),
                             ],
@@ -181,4 +254,3 @@ class _ViewOngoingGameState extends State<ViewOngoingGame> with BluetoothHandler
     );
   }
 }
-

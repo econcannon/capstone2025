@@ -93,7 +93,7 @@ mixin StatsHandler {
 
   Future<List<Map<String, dynamic>>?> fetchGames() async {
     try {
-      final response = await http.get(Uri.parse("$BASE_URL/player/game?playerID=$PLAYERID"), headers: HEADERS);
+      final response = await http.get(Uri.parse("$BASE_URL/player/game?gameId=$GAMEID"), headers: HEADERS);
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);

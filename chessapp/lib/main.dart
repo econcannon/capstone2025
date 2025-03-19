@@ -54,7 +54,7 @@ class MyApp extends StatelessWidget {
       title: 'Chess Link',
       theme: ThemeData().copyWith(
         colorScheme: ThemeData().colorScheme.copyWith(
-              primary: HexColor("#8d8d8d"),
+              primary: HexColor("#44564A"),
             ),
       ),
       home: const HomePage(),

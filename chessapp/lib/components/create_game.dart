@@ -7,7 +7,7 @@ var logger = Logger();
 
 mixin CreateGame {
   
-  Future<bool> createGame(bool ai, Uri endpoint) async {
+  Future<bool> createGame(Uri endpoint) async {
     try {
       logger.i(TOKEN);
       logger.i(HEADERS);
