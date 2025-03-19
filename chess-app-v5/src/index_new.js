@@ -809,11 +809,11 @@ async function acceptFriendRequest(playerID, friendID, DB) {
 
         // Update accepting player's records
         query = `UPDATE users SET incoming_requests = ?, friends = ? WHERE id = ?`;
-        await DB.prepare(query).bind(toCSV(incomingRequests), toCSV(friends), playerID).first();
+        await DB.prepare(query).bind(toCSV(incomingRequests), toCSV(friends), playerID).run();
 
         // Update sender's records
         query = `UPDATE users SET outgoing_requests = ?, friends = ? WHERE id = ?`;
-        await DB.prepare(query).bind(toCSV(outgoingRequests), toCSV(friendFriends), friendID).first();
+        await DB.prepare(query).bind(toCSV(outgoingRequests), toCSV(friendFriends), friendID).run();
 
         return createResponse({ success: true, message: "Friend request accepted." });
     } catch (error) {
