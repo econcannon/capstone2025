@@ -204,20 +204,20 @@ export class ChessGame extends DurableObject {
     }
     
     // Determine player color through coin flip
-    #determinePlayerColors(newPlayerID) {
-        if (this.players.size === 1) {
-            // First player - no coin flip needed
-            return { white: newPlayerID, black: null };
-        }
+    // #determinePlayerColors(newPlayerID) {
+    //     if (this.players.size === 1) {
+    //         // First player - no coin flip needed
+    //         return { white: newPlayerID, black: null };
+    //     }
         
-        // Coin flip for second player
-        const shouldSwap = Math.random() < 0.5;
-        const existingPlayer = this.players_color.white;
+    //     // Coin flip for second player
+    //     const shouldSwap = Math.random() < 0.5;
+    //     const existingPlayer = this.players_color.white;
         
-        return shouldSwap ? 
-            { white: newPlayerID, black: existingPlayer } :
-            { white: existingPlayer, black: newPlayerID };
-    }
+    //     return shouldSwap ? 
+    //         { white: newPlayerID, black: existingPlayer } :
+    //         { white: existingPlayer, black: newPlayerID };
+    // }
 
     async #updateMovesInDB(moveSan) {
         try {
@@ -225,7 +225,7 @@ export class ChessGame extends DurableObject {
                 SELECT moves 
                 FROM games 
                 WHERE id = ?
-            `).bind(this.gameID).all();
+            `).bind(this.gameID).first();
             const existingMoves = results && results[0] && results[0].moves ? results[0].moves : null;
             const newMoves = existingMoves ? `${existingMoves},${moveSan}` : moveSan;
             await this.env.DB.prepare(`
@@ -284,18 +284,27 @@ export class ChessGame extends DurableObject {
                 const isWinner = playerID === game.winner;
                 const isDraw = !game.winner;
 
+                // First update games_played, wins, losses, and ties
                 await this.env.DB.prepare(`
                     UPDATE users SET
                         games_played = games_played + 1,
                         wins = wins + ?,
                         losses = losses + ?,
-                        ties = ties   + ?,
-                        moves_per_game = FLOOR(((moves_per_game * (games_played - 1)) + ?) / games_played)
+                        ties = ties + ?
                     WHERE id = ?
                 `).bind(
                     isWinner ? 1 : 0,
                     !isWinner && !isDraw ? 1 : 0,
                     isDraw ? 1 : 0,
+                    playerID
+                ).run();
+
+                // Then update moves_per_game using the new value of games_played
+                await this.env.DB.prepare(`
+                    UPDATE users SET
+                        moves_per_game = FLOOR(((moves_per_game * (games_played - 1)) + ?) / games_played)
+                    WHERE id = ?
+                `).bind(
                     totalMoves,
                     playerID
                 ).run();
@@ -304,8 +313,6 @@ export class ChessGame extends DurableObject {
             console.error("Stats update failed:", error);
         }
     }
-
-
 
 
     async handleWebSocket(request) {
@@ -324,8 +331,8 @@ export class ChessGame extends DurableObject {
         serverSocket.serializeAttachment({ playerID });
 
         if (this.players.size <= 2) {
-            const newColors = this.#determinePlayerColors(playerID);
-            this.players_color = newColors;
+            // const newColors = this.#determinePlayerColors(playerID);
+            // this.players_color = newColors;
             await this.#updateGamePlayersInDB();
             await this.storage.put("players_color", this.players_color);
         }
