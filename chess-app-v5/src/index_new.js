@@ -382,6 +382,7 @@ export default {
         const { GAME_ROOM, DB } = env;
 
         const url_path = url.pathname.toLowerCase().split('/');
+        console.log(url_path.toString());  
         
         switch (url_path[1]) {
             case "create":
@@ -740,7 +741,11 @@ async function seeFriendRequests(playerID, DB) {
 }
 
 // Send a friend request
-async function sendFriendRequest(playerID, friendID, DB) {
+async function sendFriendRequest(playerID, url, DB) {
+    const friendID = url.searchParams.get("friendID");
+    if (!playerID || !friendID) {return createResponse({ error: "Missing playerID or friendID" }, 400);}
+    if (playerID === friendID) {return createResponse({ error: "Cannot send friend request to yourself" }, 400);}
+
     try {
         // Fetch outgoing requests for sender
         let query = `SELECT outgoing_requests FROM users WHERE id = ?`;
@@ -949,6 +954,7 @@ async function getPlayerStats(playerID, DB) {
 
     const query = `SELECT * FROM users WHERE id = ?;`;
     const result = await DB.prepare(query).bind(playerID).first();
+    console.log("result" + JSON.stringify(result));
 
     if (result) {
         return createResponse(result);
