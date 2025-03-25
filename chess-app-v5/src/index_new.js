@@ -130,6 +130,7 @@ export class ChessGame extends DurableObject {
             if (!this.players.has(playerID)) {
                 this.players.add(playerID);
                 if (ai && this.players.size === 1) {
+                if (ai && this.players.size === 1) {
                     console.log("Entered here: " + ai.toString());
                     this.players.add("AI");
                     await this.storage.put("ai", true);
@@ -187,6 +188,133 @@ export class ChessGame extends DurableObject {
         }
     }
 
+    async #updateGamePlayersInDB() {
+        try {
+            await this.env.DB.prepare(`
+                UPDATE games 
+                SET player_white = ?, player_black = ?
+                WHERE id = ?
+            `).bind(
+                this.players_color.white,
+                this.players_color.black,
+                this.gameID
+            ).run();
+        } catch (error) {
+            console.error("Player update failed:", error);
+        }
+    }
+    
+    // Determine player color through coin flip
+    // #determinePlayerColors(newPlayerID) {
+    //     if (this.players.size === 1) {
+    //         // First player - no coin flip needed
+    //         return { white: newPlayerID, black: null };
+    //     }
+        
+    //     // Coin flip for second player
+    //     const shouldSwap = Math.random() < 0.5;
+    //     const existingPlayer = this.players_color.white;
+        
+    //     return shouldSwap ? 
+    //         { white: newPlayerID, black: existingPlayer } :
+    //         { white: existingPlayer, black: newPlayerID };
+    // }
+
+    async #updateMovesInDB(moveSan) {
+        try {
+            const { results } = await this.env.DB.prepare(`
+                SELECT moves 
+                FROM games 
+                WHERE id = ?
+            `).bind(this.gameID).first();
+            const existingMoves = results && results[0] && results[0].moves ? results[0].moves : null;
+            const newMoves = existingMoves ? `${existingMoves},${moveSan}` : moveSan;
+            await this.env.DB.prepare(`
+                UPDATE games
+                SET moves = ?
+                WHERE id = ?
+            `).bind(newMoves, this.gameID).run();
+        } catch (error) {
+            console.error("Error updating moves in DB:", error);
+        }
+    }
+
+    async #finalizeGameInDB() {
+        const winner = this.game.isCheckmate() ? 
+            (this.game.turn() === 'w' ? this.players_color.black : this.players_color.white) :
+            null;
+
+        try {
+            await this.env.DB.prepare(`
+                UPDATE games 
+                SET winner = ?, 
+                    status = ?, 
+                    ended_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `).bind(
+                winner,
+                this.game.isGameOver() ? 
+                    (this.game.isCheckmate() ? 'checkmate' : 'draw') : 'active',
+                this.gameID
+            ).run();
+        } catch (error) {
+            console.error("Game finalization failed:", error);
+        }
+    }
+
+    async #updatePlayerStats() {
+        try {
+            const { results } = await this.env.DB.prepare(`
+                SELECT moves, player_white, player_black, winner
+                FROM games WHERE id = ?
+            `).bind(this.gameID).all();
+
+            if (!results || results.length === 0) {
+                console.error("Game not found for stats update:", this.gameID);
+                return;
+            }
+
+            const game = results[0];
+            const movesArray = parseCSV(game.moves);
+            const totalMoves = movesArray.length;
+
+            const players = [game.player_white, game.player_black]
+                .filter(p => p && p !== "AI");
+
+            for (const playerID of players) {
+                const isWinner = playerID === game.winner;
+                const isDraw = !game.winner;
+
+                // First update games_played, wins, losses, and ties
+                await this.env.DB.prepare(`
+                    UPDATE users SET
+                        games_played = games_played + 1,
+                        wins = wins + ?,
+                        losses = losses + ?,
+                        ties = ties + ?
+                    WHERE id = ?
+                `).bind(
+                    isWinner ? 1 : 0,
+                    !isWinner && !isDraw ? 1 : 0,
+                    isDraw ? 1 : 0,
+                    playerID
+                ).run();
+
+                // Then update moves_per_game using the new value of games_played
+                await this.env.DB.prepare(`
+                    UPDATE users SET
+                        moves_per_game = FLOOR(((moves_per_game * (games_played - 1)) + ?) / games_played)
+                    WHERE id = ?
+                `).bind(
+                    totalMoves,
+                    playerID
+                ).run();
+            }
+        } catch (error) {
+            console.error("Stats update failed:", error);
+        }
+    }
+
 
     async handleWebSocket(request) {
         const url = new URL(request.url);
@@ -233,23 +361,24 @@ export class ChessGame extends DurableObject {
         const isWhiteTurn = this.game.turn() === 'w';
         const isPlayerWhite = this.players_color.white === playerID;
         const isValidTurn = (isWhiteTurn && isPlayerWhite) || (!isWhiteTurn && !isPlayerWhite);
-    
+
         if (!isValidTurn) {
             ws.send(JSON.stringify(createResponse({ message_type: "error", error: "Not your turn" }, 403)));
             return;
         }
-    
+
         let result;
         try {
             result = this.game.move(move);
         } catch {
             result = null;
         }
-        
+
         if (result) {
             await this.storage.put("gameState", this.game.fen());
-    
-            const confirmationPayload = JSON.stringify(standardGameInfo(this.game, playerID, this.players_color, Array.from(this.players).join(", "), "confirmation"));
+            await this.#updateMovesInDB(result.san); // Modified: Save move to DB
+
+            const confirmationPayload = JSON.stringify(standardGameInfo(this.game, playerID, this.players_color, this.players, "confirmation"));
             ws.send(confirmationPayload);
             console.log("Process move: " + this.ai.toString());
             if (this.ai) {
@@ -260,6 +389,11 @@ export class ChessGame extends DurableObject {
             }
         } else {
             ws.send(JSON.stringify(createResponse({ message_type: "error", error: "Invalid move" }, 400)));
+        }
+
+        if (this.game.isGameOver()) {
+            await this.#finalizeGameInDB();
+            await this.#updatePlayerStats(); 
         }
     }
     
@@ -391,6 +525,8 @@ export default {
                 return handlePlayerActions(url_path, url, request, playerID, DB, GAME_ROOM);
             case "connect":
                 return handleConnect(url, request, GAME_ROOM);
+            case "replay":
+                return handleReplayGame(request, url, DB);
             default:
                 return createResponse({message_type: "error", error: "Not Found" }, 404);
         }
@@ -413,8 +549,16 @@ async function handleGameCreation(playerID, url, request, GAME_ROOM, DB, origin 
     durable_url.searchParams.append("playerID", playerID);
     durable_url.searchParams.append("ai", ai);
     durable_url.searchParams.append("depth", url.searchParams.get("depth"));
+    
+
+    await DB.prepare(`
+        INSERT INTO games (id, player_white, status)
+        VALUES (?, ?, 'pending')
+    `).bind(gameString, playerID).run();
+
     await gameRoom.fetch(durable_url);
 
+   
     if (success) {
         return createResponse({ gameID: gameString });
     } else {
@@ -438,6 +582,31 @@ async function handleConnect(url, request, GAME_ROOM) {
 }
 
 
+
+// Get game replay data
+async function handleReplayGame(request, url, DB) {
+    if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
+
+    try {
+        const gameID = url.searchParams.get("gameID");
+        const { results } = await DB.prepare(`
+            SELECT moves FROM games
+            WHERE id = ?
+        `).bind(gameID).all();
+
+        if (results && results.length > 0 && results[0].moves) {
+            const moves = parseCSV(results[0].moves);
+            return createResponse({ moves }); 
+        } else {
+            return createResponse({ moves });
+        }
+    } catch (error) {
+        console.error("Replay error:", error);
+        return createResponse({ error: "Failed to get replay" }, 500);
+    }
+}
+
+
 async function handlePlayerActions(url_path, url, request, playerID, DB, GAME_ROOM) {
     switch (url_path[2]) {
         case "login":
@@ -455,6 +624,7 @@ async function handlePlayerActions(url_path, url, request, playerID, DB, GAME_RO
         case "friends":
             return getFriends(playerID, DB);
         case "see-friend-requests":
+            return seeFriendRequests(playerID, DB);
             return seeFriendRequests(playerID, DB);
         case "send-friend-request":
             return sendFriendRequest(playerID, url, DB);
