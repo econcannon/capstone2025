@@ -130,9 +130,9 @@ export class ChessGame extends DurableObject {
             if (!this.players.has(playerID)) {
                 this.players.add(playerID);
                 if (ai && this.players.size === 1) {
-                if (ai && this.players.size === 1) {
                     console.log("Entered here: " + ai.toString());
                     this.players.add("AI");
+                    this.#updateGamePlayersInDB();
                     await this.storage.put("ai", true);
                     await this.storage.put("depth", depth);
                     this.ai = true;
@@ -145,6 +145,12 @@ export class ChessGame extends DurableObject {
             }
             else {
                 return createResponse({message_type: "error", error: "You are already in this game!" }, 403);
+            }
+
+            if (this.players.size === 2) {
+                this.players_color = this.#determinePlayerColors(playerID);
+                await this.#updateGamePlayersInDB();
+                await this.storage.put("players_color", this.players_color);
             }
 
             return createResponse(standardGameInfo(this.game, playerID, this.players_color, Array.from(this.players).join(", ")));
@@ -205,30 +211,28 @@ export class ChessGame extends DurableObject {
     }
     
     // Determine player color through coin flip
-    // #determinePlayerColors(newPlayerID) {
-    //     if (this.players.size === 1) {
-    //         // First player - no coin flip needed
-    //         return { white: newPlayerID, black: null };
-    //     }
+    #determinePlayerColors(newPlayerID) {        
+        // Coin flip for second player
+        const shouldSwap = Math.random() < 0.5;
+        const existingPlayer = this.players_color.white;
         
-    //     // Coin flip for second player
-    //     const shouldSwap = Math.random() < 0.5;
-    //     const existingPlayer = this.players_color.white;
-        
-    //     return shouldSwap ? 
-    //         { white: newPlayerID, black: existingPlayer } :
-    //         { white: existingPlayer, black: newPlayerID };
-    // }
+        return shouldSwap ? 
+            { white: newPlayerID, black: existingPlayer } :
+            { white: existingPlayer, black: newPlayerID };
+    }
 
     async #updateMovesInDB(moveSan) {
         try {
-            const { results } = await this.env.DB.prepare(`
+            const result = await this.env.DB.prepare(`
                 SELECT moves 
                 FROM games 
                 WHERE id = ?
             `).bind(this.gameID).first();
-            const existingMoves = results && results[0] && results[0].moves ? results[0].moves : null;
-            const newMoves = existingMoves ? `${existingMoves},${moveSan}` : moveSan;
+            
+            const existingMoves = result && result.moves ? parseCSV(result.moves) : [];
+            existingMoves.push(moveSan);
+            const newMoves = toCSV(existingMoves);
+
             await this.env.DB.prepare(`
                 UPDATE games
                 SET moves = ?
@@ -422,7 +426,6 @@ export class ChessGame extends DurableObject {
                 throw new Error(`API Error: ${response.statusText}`);
             }
             const data = await response.json();
-    
             return data.bestmove || "No move found.";
         } catch (error) {
             console.error("Error fetching AI move:", error.message);
@@ -430,13 +433,14 @@ export class ChessGame extends DurableObject {
         }
     }
 
-
+    // Needs more error handling
     async handleAIMove(ws, playerID) {
         const aiMove = await this.getAIMove(this.game.fen(), this.depth);
         console.log("AI Move: " + JSON.stringify(aiMove));
 
         if (aiMove) {
-            this.game.move(aiMove);
+            const result = this.game.move(aiMove);
+            await this.#updateMovesInDB(result.san);
             await this.storage.put("gameState", this.game.fen());
 
             const aiMovePayload = JSON.stringify(
@@ -1105,11 +1109,8 @@ async function getGameData(playerID, url, request, DB) {
     if (!playerID) return createResponse({message_type: "error", error: "Player ID is required." }, 400);
     if (!verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
 
-    const gameID = url.searchParams.get("gameID");
-    if (!gameID) return createResponse({message_type: "error", error: "Game ID is required." }, 400);
-
     const query = `SELECT * FROM games WHERE id = ?;`;
-    const result = await DB.prepare(query).bind(gameID).first();
+    const result = await DB.prepare(query).bind(playerID).all();
 
     if (result) {
         return createResponse(result);

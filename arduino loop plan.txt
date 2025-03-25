@@ -1,0 +1,48 @@
+.ino loop
+
+
+
+{
+Check Connections (Bluetooth and wifi)
+- if wifi info is incorrect, reset characteristics and display on LCD
+
+
+Game Loop {
+Check if message received
+- Handle message
+- display (opponent move, message on LCD, emoji in LEDs, error on LCD)
+
+If my turn
+- display
+- Wait for user move
+	- Display LED based on picked up pieces
+- Send user move
+
+If not my turn
+- Do nothing
+- Allow user to send emoji / message
+
+Check reset characteristic from Bluetooth
+}
+
+Game replay loop {
+Get game moves from phone
+
+arrow keys to navigate through moves
+
+display change in state based in keys via LEDs
+}
+
+Non Game Loop {
+
+Check for characteristics 
+ - board use characteristic ie game or replay mode
+Fun display animations on LEDs
+Waiting for Bluetooth and wifi info from phone...
+
+}
+
+Settings
+
+
+}
