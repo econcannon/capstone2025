@@ -71,17 +71,30 @@ export class ChessGame extends DurableObject {
         this.gameID = null;
         this.depth = 10;
         this.ai = false;
+        this.moves = [];
+        this.assessment = [];
+        this.white_blunders = 0;
+        this.black_blunders = 0;
+        this.white_brilliants = 0;
+        this.black_brilliants = 0;
         this.initializeGameState();
     }
+    
 
     async initializeGameState() {
-        const [storedState, storedPlayers, storedPlayersColor, storedAi, storedDepth, storedGameID] = await Promise.all([
+        const [storedState, storedPlayers, storedPlayersColor, storedAi, storedDepth, storedGameID, storedMoves, storedAssessment, storedWhiteBlunders, storedBlackBlunders, storedWhiteBrilliants, storedBlackBrilliants] = await Promise.all([
             this.storage.get("gameState"),
             this.storage.get("players"),
             this.storage.get("players_color"),
             this.storage.get("ai"),
             this.storage.get("depth"),
-            this.storage.get("gameID")
+            this.storage.get("gameID"),
+            this.storage.get("moves"),
+            this.storage.get("assessment"),
+            this.storage.get("white_blunders"),
+            this.storage.get("black_blunders"),
+            this.storage.get("white_brilliants"),
+            this.storage.get("black_brilliants")
         ]);
 
         this.game = storedState ? new Chess(storedState) : new Chess();
@@ -90,7 +103,14 @@ export class ChessGame extends DurableObject {
         this.ai = storedAi || false;
         this.depth = storedDepth || 10;
         this.gameID = storedGameID || null;
-        console.log("initializing game state ai: " + this.ai.toString() + " players: " + this.players.toString() + " colors: " + JSON.stringify(this.players_color));
+        this.moves = storedMoves ? storedMoves.split(',') : [];
+        this.assessment = storedAssessment ? storedAssessment.split(',') : [];
+        this.white_blunders = storedWhiteBlunders || 0;
+        this.black_blunders = storedBlackBlunders || 0;
+        this.white_brilliants = storedWhiteBrilliants || 0;
+        this.black_brilliants = storedBlackBrilliants || 0;
+        console.log("initializing game state ai: " + this.ai.toString() + " players: " + Array.from(this.players).toString() + " colors: " + JSON.stringify(this.players_color) + " moves: " + this.moves.length + " assessments: " + this.assessment.length);
+
     }
 
     async fetch(request) {
@@ -219,42 +239,85 @@ export class ChessGame extends DurableObject {
     //         { white: existingPlayer, black: newPlayerID };
     // }
 
-    async #updateMovesInDB(moveSan) {
+    async #updateMovesInDB() {
         try {
-            const { results } = await this.env.DB.prepare(`
-                SELECT moves 
-                FROM games 
-                WHERE id = ?
-            `).bind(this.gameID).first();
-            const existingMoves = results && results[0] && results[0].moves ? results[0].moves : null;
-            const newMoves = existingMoves ? `${existingMoves},${moveSan}` : moveSan;
             await this.env.DB.prepare(`
                 UPDATE games
-                SET moves = ?
+                SET moves = ?,
+                    assessment = ?,
+                    white_blunders = ?,
+                    black_blunders = ?,
+                    white_brilliants = ?,
+                    black_brilliants = ?
                 WHERE id = ?
-            `).bind(newMoves, this.gameID).run();
+            `).bind(
+                this.moves.join(','),
+                this.assessment.join(','),
+                this.white_blunders,
+                this.black_blunders,
+                this.white_brilliants,
+                this.black_brilliants,
+                this.gameID
+            ).run();
         } catch (error) {
             console.error("Error updating moves in DB:", error);
         }
     }
 
+    async getStockfishEvaluation(fen) {
+        const url = new URL(STOCKFISH_URL);
+        url.searchParams.append("fen", fen);
+        url.searchParams.append("depth", 10); 
+
+        try {
+            const response = await fetch(url.toString());
+            if (!response.ok) {
+                console.error(`Stockfish API error: ${response.status} - ${response.statusText}`);
+                return 0; 
+            }
+            const data = await response.json();
+            return parseInt(data.eval, 10) || 0; 
+        } catch (error) {
+            console.error("Error fetching Stockfish evaluation:", error);
+            return 0; 
+        }
+    }
+
     async #finalizeGameInDB() {
-        const winner = this.game.isCheckmate() ? 
+        const winner = this.game.isCheckmate() ?
             (this.game.turn() === 'w' ? this.players_color.black : this.players_color.white) :
             null;
 
+        let whiteEvalSum = 0;
+        let blackEvalSum = 0;
+        const assessmentArray = this.assessment.map(Number);
+        for (let i = 0; i < assessmentArray.length; i++) {
+            if (i % 2 === 0 && this.players_color.white !== "AI") { // White's move
+                whiteEvalSum += assessmentArray[i];
+            } else if (i % 2 !== 0 && this.players_color.black !== "AI") { // Black's move
+                blackEvalSum += assessmentArray[i];
+            }
+        }
+        const whitePlayerMetric = this.moves.filter((_, index) => index % 2 === 0 && this.players_color.white !== "AI").length > 0 ? whiteEvalSum / this.moves.filter((_, index) => index % 2 === 0 && this.players_color.white !== "AI").length : 0;
+        const blackPlayerMetric = this.moves.filter((_, index) => index % 2 !== 0 && this.players_color.black !== "AI").length > 0 ? blackEvalSum / this.moves.filter((_, index) => index % 2 !== 0 && this.players_color.black !== "AI").length : 0;
+
+
         try {
             await this.env.DB.prepare(`
-                UPDATE games 
-                SET winner = ?, 
-                    status = ?, 
-                    ended_at = CURRENT_TIMESTAMP
+                UPDATE games
+                SET winner = ?,
+                    status = ?,
+                    ended_at = CURRENT_TIMESTAMP,
+                    white_player_metric = ?,
+                    black_player_metric = ?
                 WHERE id = ?
             `).bind(
                 winner,
-                this.game.isGameOver() ? 
+                this.game.isGameOver() ?
                     (this.game.isCheckmate() ? 'checkmate' : 'draw') : 'active',
-                this.gameID
+                this.gameID,
+                whitePlayerMetric,
+                blackPlayerMetric
             ).run();
         } catch (error) {
             console.error("Game finalization failed:", error);
@@ -264,9 +327,9 @@ export class ChessGame extends DurableObject {
     async #updatePlayerStats() {
         try {
             const { results } = await this.env.DB.prepare(`
-                SELECT moves, player_white, player_black, winner
+                SELECT moves, player_white, player_black, winner, white_player_metric, black_player_metric
                 FROM games WHERE id = ?
-            `).bind(this.gameID).all();
+            `).bind(this.gameID).first();
 
             if (!results || results.length === 0) {
                 console.error("Game not found for stats update:", this.gameID);
@@ -274,8 +337,7 @@ export class ChessGame extends DurableObject {
             }
 
             const game = results[0];
-            const movesArray = parseCSV(game.moves);
-            const totalMoves = movesArray.length;
+            const totalMoves = parseCSV(game.moves).length;
 
             const players = [game.player_white, game.player_black]
                 .filter(p => p && p !== "AI");
@@ -283,6 +345,20 @@ export class ChessGame extends DurableObject {
             for (const playerID of players) {
                 const isWinner = playerID === game.winner;
                 const isDraw = !game.winner;
+                const isWhite = playerID === game.player_white;
+                const currentGameMetric = isWhite ? game.white_player_metric : game.black_player_metric;
+
+                const userResult = await this.env.DB.prepare(`
+                    SELECT games_played, wins, losses, ties, moves_per_game, average_move_quality
+                    FROM users WHERE id = ?
+                `).bind(playerID).first();
+
+                const gamesPlayed = userResult?.games_played || 0;
+                const oldAverageMoveQuality = userResult?.average_move_quality || 0;
+
+                const newAverageMoveQuality = gamesPlayed > 0
+                    ? ((oldAverageMoveQuality * gamesPlayed) + currentGameMetric) / (gamesPlayed + 1)
+                    : currentGameMetric;
 
                 // First update games_played, wins, losses, and ties
                 await this.env.DB.prepare(`
@@ -290,12 +366,16 @@ export class ChessGame extends DurableObject {
                         games_played = games_played + 1,
                         wins = wins + ?,
                         losses = losses + ?,
-                        ties = ties + ?
+                        ties = ties + ?,
+                        average_move_quality = ?
+
+
                     WHERE id = ?
                 `).bind(
                     isWinner ? 1 : 0,
                     !isWinner && !isDraw ? 1 : 0,
                     isDraw ? 1 : 0,
+                    newAverageMoveQuality,
                     playerID
                 ).run();
 
@@ -367,31 +447,70 @@ export class ChessGame extends DurableObject {
 
         let result;
         try {
+            // Get evaluation before move
+            const fenBefore = this.game.fen();
+            const evalBefore = await this.getStockfishEvaluation(fenBefore);
+
             result = this.game.move(move);
-        } catch {
-            result = null;
-        }
+            if (result) {
+                // Get evaluation after move
+                const fenAfter = this.game.fen();
+                const evalAfter = await this.getStockfishEvaluation(fenAfter);
+                const evaluationDifference = evalAfter - evalBefore;
 
-        if (result) {
-            await this.storage.put("gameState", this.game.fen());
-            await this.#updateMovesInDB(result.san); // Modified: Save move to DB
+                this.moves.push(result.san);
+                this.assessment.push(evaluationDifference);
+                await this.storage.put("moves", this.moves.join(','));
+                await this.storage.put("assessment", this.assessment.join(','));
 
-            const confirmationPayload = JSON.stringify(standardGameInfo(this.game, playerID, this.players_color, this.players, "confirmation"));
-            ws.send(confirmationPayload);
-            console.log("Process move: " + this.ai.toString());
-            if (this.ai) {
-                // Get AI move from Stockfish
-                await this.handleAIMove(ws, playerID);
+                const blunderThreshold = -150;
+                const brilliantThreshold = 150;
+
+                const currentPlayerColor = isWhiteTurn ? this.players_color.white : this.players_color.black;
+                const isAI = this.players.has("AI");
+
+                if (currentPlayerColor === this.players_color.white && playerID === this.players_color.white && !isAI) {
+                    if (evaluationDifference <= blunderThreshold) {
+                        this.white_blunders++;
+                        await this.storage.put("white_blunders", this.white_blunders);
+                    } else if (evaluationDifference >= brilliantThreshold) {
+                        this.white_brilliants++;
+                        await this.storage.put("white_brilliants", this.white_brilliants);
+                    }
+                } else if (currentPlayerColor === this.players_color.black && playerID === this.players_color.black && !isAI) {
+                    if (evaluationDifference >= -blunderThreshold) { // Negative for black is a loss
+                        this.black_blunders++;
+                        await this.storage.put("black_blunders", this.black_blunders);
+                    } else if (evaluationDifference <= -brilliantThreshold) { // Positive for black is a gain
+                        this.black_brilliants++;
+                        await this.storage.put("black_brilliants", this.black_brilliants);
+                    }
+                }
+                await this.#updateMovesInDB();
+
+                const confirmationPayload = JSON.stringify(standardGameInfo(this.game, playerID, this.players_color, this.players, "confirmation"));
+                ws.send(confirmationPayload);
+
+                if (this.ai && this.players_color.black === "AI" && isWhiteTurn) {
+                    await this.handleAIMove(ws, playerID);
+                } else if (this.ai && this.players_color.white === "AI" && !isWhiteTurn) {
+                    await this.handleAIMove(ws, playerID);
+                } else if (!this.ai) {
+                    this.broadcastMove(ws, result, playerID);
+                }
+
+
             } else {
-                this.broadcastMove(ws, result, playerID);
+                ws.send(JSON.stringify(createResponse({ message_type: "error", error: "Invalid move" }, 400)));
             }
-        } else {
-            ws.send(JSON.stringify(createResponse({ message_type: "error", error: "Invalid move" }, 400)));
+        } catch (error) {
+            console.error("Error processing move:", error);
+            ws.send(JSON.stringify(createResponse({ message_type: "error", error: "Error processing move" }, 500)));
         }
 
         if (this.game.isGameOver()) {
             await this.#finalizeGameInDB();
-            await this.#updatePlayerStats(); 
+            await this.#updatePlayerStats();
         }
     }
     
@@ -430,21 +549,59 @@ export class ChessGame extends DurableObject {
 
 
     async handleAIMove(ws, playerID) {
+        // Get evaluation before AI move
+        const fenBefore = this.game.fen();
+        const evalBefore = await this.getStockfishEvaluation(fenBefore);
+
         const aiMove = await this.getAIMove(this.game.fen(), this.depth);
-        console.log("AI Move: " + JSON.stringify(aiMove));
 
         if (aiMove) {
-            this.game.move(aiMove);
-            await this.storage.put("gameState", this.game.fen());
+            const result = this.game.move(aiMove);
+            if (result) {
+                // Get evaluation after AI move
+                const fenAfter = this.game.fen();
+                const evalAfter = await this.getStockfishEvaluation(fenAfter);
+                const evaluationDifference = evalAfter - evalBefore;
 
-            const aiMovePayload = JSON.stringify(
-                standardGameInfo(this.game, playerID, this.players_color, this.players, "game-state")
-            );
-            ws.send(aiMovePayload);
+                this.moves.push(result.san);
+                this.assessment.push(evaluationDifference);
+                await this.storage.put("moves", this.moves.join(','));
+                await this.storage.put("assessment", this.assessment.join(','));
+
+                const blunderThreshold = -150;
+                const brilliantThreshold = 150;
+                const isWhiteTurn = this.game.turn() === 'w';
+
+                if (this.players_color.white === "AI" && isWhiteTurn) {
+                    if (evaluationDifference <= blunderThreshold) {
+                        this.white_blunders++;
+                        await this.storage.put("white_blunders", this.white_blunders);
+                    } else if (evaluationDifference >= brilliantThreshold) {
+                        this.white_brilliants++;
+                        await this.storage.put("white_brilliants", this.white_brilliants);
+                    }
+                } else if (this.players_color.black === "AI" && !isWhiteTurn) {
+                    if (evaluationDifference >= -blunderThreshold) {
+                        this.black_blunders++;
+                        await this.storage.put("black_blunders", this.black_blunders);
+                    } else if (evaluationDifference <= -brilliantThreshold) {
+                        this.black_brilliants++;
+                        await this.storage.put("black_brilliants", this.black_brilliants);
+                    }
+                }
+                await this.#updateMovesInDB();
+
+                const aiMovePayload = JSON.stringify(
+                    standardGameInfo(this.game, playerID, this.players_color, this.players, "game-state")
+                );
+                ws.send(aiMovePayload);
+            } else {
+                console.error("AI generated an invalid move:", aiMove);
+            }
         } else {
             ws.send(JSON.stringify(createResponse({ message_type: "error", error: "AI move failed" }, 500)));
         }
-    } 
+    }
     
     async getWebSocketFromPlayerID(playerID) {
         const playerSocket = this.ctx.getWebSockets().find((ws) => {
@@ -546,16 +703,16 @@ async function handleGameCreation(playerID, url, request, GAME_ROOM, DB) {
     durable_url.searchParams.append("playerID", playerID);
     durable_url.searchParams.append("ai", ai);
     durable_url.searchParams.append("depth", url.searchParams.get("depth"));
-    
+
 
     await DB.prepare(`
-        INSERT INTO games (id, player_white, status)
-        VALUES (?, ?, 'pending')
+        INSERT INTO games (id, player_white, status, moves, assessment, white_blunders, black_blunders, white_brilliants, black_brilliants)
+        VALUES (?, ?, 'pending', '', '', 0, 0, 0, 0)
     `).bind(gameString, playerID).run();
 
     await gameRoom.fetch(durable_url);
 
-   
+
     if (success) {
         return createResponse({ gameID: gameString });
     } else {
@@ -587,15 +744,16 @@ async function handleReplayGame(request, url, DB) {
     try {
         const gameID = url.searchParams.get("gameID");
         const { results } = await DB.prepare(`
-            SELECT moves FROM games
+            SELECT moves, assessment FROM games
             WHERE id = ?
         `).bind(gameID).all();
 
-        if (results && results.length > 0 && results[0].moves) {
+        if (results && results.length > 0) {
             const moves = parseCSV(results[0].moves);
-            return createResponse({ moves }); 
+            const assessment = parseCSV(results[0].assessment).map(Number);
+            return createResponse({ moves, assessment });
         } else {
-            return createResponse({ moves });
+            return createResponse({ moves, assessment});
         }
     } catch (error) {
         console.error("Replay error:", error);
