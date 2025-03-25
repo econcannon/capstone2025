@@ -251,6 +251,14 @@ String toSquare = "";
 String last_move = "";
 
 
+// SCAN BOARD AND DETECT PIECE CHANGES 
+std::pair<String, String> get_move() {
+    scan_grid_detect_pieces();
+    // Add logic to determine fromSquare and toSquare
+    // For now, returning empty strings as placeholders
+    return std::make_pair("", "");
+}
+
 void play_game()
 {
     join_game(); // Connects to game server, gets current turn and game state
@@ -275,14 +283,6 @@ void play_game()
     }
 }
 
-// SCAN BOARD AND DETECT PIECE CHANGES 
-std::pair<String, String> get_move() {
-    scan_grid_detect_pieces();
-    // Add logic to determine fromSquare and toSquare
-    // For now, returning empty strings as placeholders
-    return std::make_pair("", "");
-}
-
 void handle_game_over(String player, String winner)
 {
     // Display something on the LCD and on LEDs
@@ -290,7 +290,7 @@ void handle_game_over(String player, String winner)
     {
         update_lcd("You Win!");
     }
-    else if (player.empty())
+    else if (player == "")
     {
         update_lcd("It's a Draw!");
     }
@@ -677,8 +677,8 @@ void validate_opponent_move()
     while (!compare_board_states())
         {
             // Display LCD logic
-            scan_grid_detect_pieces()
-                delay(100);
+            scan_grid_detect_pieces();
+            delay(100);
         }
 }
 
@@ -698,11 +698,11 @@ bool compare_board_states()
         {
             if (current_board_state[i][j] != expected_board_state[i][j])
             {
-                return false
+                return false;
             }
         }
     }
-    return true
+    return true;
 }
 
 void wait_for_opponent_move()
@@ -808,7 +808,7 @@ void display_expected_board_state() {}
 
 // Finds changes between two board states. Up to 4 to account for castling
 std::tuple<std::pair<int, int>, std::pair<int, int>, std::pair<int, int>, std::pair<int, int>> findChanges(int a[8][8], int b[8][8]) {
-    pair<int, int> changes[4];
+    std::pair<int, int> changes[4];
     int count = 0;
 
     for (int i = 0; i < 8 && count < 4; ++i) {
