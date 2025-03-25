@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 // Third-party package imports
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hexcolor/hexcolor.dart';
+import 'package:logger/logger.dart';
 
 // Project imports
 import 'package:chessapp/game/get_data/stats.dart';
 import 'package:chessapp/components/constants.dart';
 import 'package:chessapp/game/main_menu_component/game_stats.dart';
 import 'package:chessapp/game/main_menu.dart';
+
+var logger = Logger();
 
 class PlayerStatsScreen extends StatefulWidget {
   const PlayerStatsScreen({super.key});
@@ -20,30 +23,44 @@ class PlayerStatsScreen extends StatefulWidget {
 
 class _PlayerStatsScreenState extends State<PlayerStatsScreen>
     with StatsHandler {
-  //Map<String, dynamic> playerStats = {};
+  Map<String, dynamic> playerStats = {};
 
   @override
   void initState() {
     super.initState();
-    //fetchAndSetStats();
+    fetchAndSetStats();
   }
 
-  // Future<void> fetchAndSetStats() async {
-  //   final stats = await fetchStats();
-  //   if (stats != null) {
-  //     setState(() {
-  //       playerStats = stats;
-  //     });
-  //   }
-  // }
+  Future<void> fetchAndSetStats() async {
+    final stats = await fetchStats();
+    logger.i("fetching stats");
 
-  final Map<String, dynamic> playerStats = {
-    "gamesPlayed": 25,
-    "wins": 15,
-    "losses": 7,
-    "ties": 3,
-    "movesPerGame": 28,
-  };
+    if (stats != null) {
+      setState(() {
+        print("setting state");
+        playerStats = stats;
+      });
+      printPlayerStatsTable();
+    }
+    else{
+      print("stats is null");
+    }
+  }
+
+  void printPlayerStatsTable() {
+    print("Player Stats:");
+    playerStats.forEach((key, value) {
+      print("$key: $value");
+    });
+  }
+
+  // final Map<String, dynamic> playerStats = {
+  //   "gamesPlayed": 25,
+  //   "wins": 15,
+  //   "losses": 7,
+  //   "ties": 3,
+  //   "movesPerGame": 28,
+  // };
 
   @override
   Widget build(BuildContext context) {
@@ -97,11 +114,14 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen>
                 children: [
                   buildStatRow("Player ID", PLAYERID),
                   const Divider(thickness: 1, color: Colors.black26),
-                  buildStatRow("Games Played", playerStats["gamesPlayed"] ?? 0),
+                  buildStatRow(
+                      "Games Played", playerStats["games_played"] ?? 0),
                   buildStatRow("Wins", playerStats["wins"] ?? 0),
                   buildStatRow("Losses", playerStats["losses"] ?? 0),
                   buildStatRow("Ties", playerStats["ties"] ?? 0),
-                  buildStatRow("Moves/Game", playerStats["movesPerGame"] ?? 0),
+                  buildStatRow(
+                      "Moves/Game", playerStats["moves_per_game"] ?? 0),
+                  buildStatRow("Rating", playerStats["rating"] ?? 0),
                 ],
               ),
             ),

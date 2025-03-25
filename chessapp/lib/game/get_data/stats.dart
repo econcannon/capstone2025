@@ -79,8 +79,8 @@ mixin StatsHandler {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data != null && data['stats'] != null) {
-          return Map<String, dynamic>.from(data['stats']);
+        if (data != null && data != null) {
+          return Map<String, dynamic>.from(data);
         }
       } else {
         logger.e("Failed to fetch stats. Status Code: ${response.statusCode}");
