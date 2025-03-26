@@ -40,13 +40,16 @@ int expected_board_state[8][8];
 // LCD pin assignments
 const int rs = 6, en = 9, d4 = 2, d5 = 3, d6 = 4, d7 = 5;
 
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+
+
 // WiFi credentials and server details
 char ssid[50];
 char password[50];
 char playerID[50];
 char gameID[65];
 char useType[50];
-bool reset;
+int reset;
 
 // Server details
 const char *serverAddress = "chess-app-v5.concannon-e.workers.dev";
@@ -71,7 +74,7 @@ BLEStringCharacteristic passwordCharacteristic(PASSWORD_CHAR_UUID, BLERead | BLE
 BLEStringCharacteristic gameIDCharacteristic(GAMEID_CHAR_UUID, BLERead | BLEWrite, 65);
 BLEStringCharacteristic playerIDCharacteristic(PLAYERID_CHAR_UUID, BLERead | BLEWrite, 50);
 BLEByteCharacteristic resetCharacteristic(RESET_CHAR_UUID, BLEWrite);
-BLEStringCharacteristic useTypeCharacteristic(USE_TYPE_CHAR_UUID, BLEWrite, 50);
+BLEStringCharacteristic useTypeCharacteristic(USE_TYPE_CHAR_UUID, BLERead | BLEWrite, 50);
 
 void setup()
 {
@@ -111,27 +114,29 @@ void setup()
 
     // Initialize global vars
     clear_characteristics();
-    reset = false;
+    reset = 0;
 }
 
 void loop()
 {
-
-    check_connections(); // Checks for proper connection to BLE and WiFi
-    if (useType == "play")
+    
+    wait_for_bluetooth_credentials(); // Only need ble until game start
+    if (strcmp(useType, "play")) {
         play_game(); // Starts the game with proper connection
-    else if (useType == "replay")
-        replay_game();       // ReVIsualize history of a completed game
-    check_characteristics(); // game connection info (Reset, loss connection, etc)
-    reset = false;           // Setting here so that checking characteristics can propagate through all functions
+    }
+    else if (strcmp(useType, "replay")) {
+        replay_game(); // ReVIsualize history of a completed game
+    }       
+    delay(1000);
+    reset = 0;           // Setting here so that checking characteristics can propagate through all functions
 }
 
 void replay_game() {}
 
 void check_connections()
 {
-    connect_to_wifi();
     connect_to_bluetooth();
+    connect_to_wifi();
 }
 
 void check_characteristics()
@@ -155,7 +160,7 @@ void clear_characteristics()
     passwordCharacteristic.setValue("");
     gameIDCharacteristic.setValue("");
     playerIDCharacteristic.setValue("");
-    resetCharacteristic.setValue(false);
+    resetCharacteristic.setValue(0);
     useTypeCharacteristic.setValue("");
 }
 
@@ -203,7 +208,9 @@ void read_ble_characteristics()
     }
     if (resetCharacteristic.written())
     {
-        reset = resetCharacteristic.value();
+        int resetVal = resetCharacteristic.value();
+        if (resetVal == 48) {reset = 0;}
+        else {reset = 1;}
         Serial.print("Reset: ");
         Serial.println(reset);
     }
@@ -222,6 +229,42 @@ void connect_to_wifi()
     }
     Serial.println("\nConnected to WiFi");
 }
+
+
+// BLE - Wait for WiFi Credentials & GameID via Bluetooth
+void wait_for_bluetooth_credentials() {
+    Serial.println("Waiting for WiFi credentials via Bluetooth...");
+    
+    BLEDevice central = BLE.central();
+    while (!central.connected()) {
+      central = BLE.central();
+      if (central) {
+        Serial.print("Connected to central: ");
+        Serial.println(central.address());
+  
+        while (central.connected()) {
+          read_ble_characteristics();
+        //   if (strlen(ssid) > 0 && strlen(password) > 0 && strlen(gameID) > 0 && strlen(playerID) > 0) {
+        if (strlen(ssid) > 0 && strlen(password) > 0) {
+            Serial.println("All credentials received.");
+            return;
+          }
+        }
+      }
+      central = BLE.central();
+    }
+
+    while (central.connected()) {
+      read_ble_characteristics();
+      //   if (strlen(ssid) > 0 && strlen(password) > 0 && strlen(gameID) > 0 && strlen(playerID) > 0) {
+      if (strlen(ssid) > 0 && strlen(password) > 0 && strlen(useType) > 0) {
+        Serial.println("All credentials received.");
+        return;
+      }
+    }
+}
+
+
 
 void connect_to_bluetooth()
 {
@@ -273,7 +316,7 @@ void play_game()
             if (myTurn)
             {
                 std::pair<String, String> move = get_move();
-                send_move(); // Confirmations will be handled by get_messages
+                send_move(move.first, move.second); // Confirmations will be handled by get_messages
             }
             else if (opponentsTurn)
             {
@@ -305,6 +348,9 @@ void join_game()
 {
     if (WiFi.status() != WL_CONNECTED)
         connect_to_wifi();
+    Serial.print(gameID);
+    Serial.print(" IN BETWEEN PRINTS ");
+    Serial.println(playerID);
 
     char wsURL[100];
     snprintf(wsURL, sizeof(wsURL), "/connect?gameID=%s&playerID=%s", gameID, playerID);
@@ -329,14 +375,9 @@ void join_game()
     }
 }
 
-void send_move()
-{return;}
-
 void check_websocket()
 {
-    check_connections();
-    if (!wsClient.connected())
-    {
+    if (!wsClient.connected()) {
         join_game();
     }
 }
@@ -610,7 +651,7 @@ void send_move(String fromSquare, String toSquare)
                     if (gameOver & !checkmate)
                         handle_game_over("", "");
                     fen_to_expected_board((const char *)parsedResponse["fen"]);
-
+                    update_last_board_state();
                     break;
                 }
                 else if (messageType == "error")
@@ -632,7 +673,6 @@ void send_move(String fromSquare, String toSquare)
 // update lcd / display string - Move sent, Opponents turn, your turn, game over You win
 void update_lcd(String message)
 {
-    // ERROR lcd not declared in this scope
     lcd.clear();
     lcd.println(message);
 
@@ -825,4 +865,13 @@ std::tuple<std::pair<int, int>, std::pair<int, int>, std::pair<int, int>, std::p
     }
 
     return {changes[0], changes[1], changes[2], changes[3]};
+}
+
+
+void update_last_board_state() {
+    for (int row = 0; row < 8; row++) {
+        for (int col = 0; col < 8; col++) {
+            last_board_state[row][col] = expected_board_state[row][col];
+        }
+    }
 }
