@@ -14,7 +14,8 @@ class GameStatsScreen extends StatefulWidget {
 }
 
 class _GameStatsScreenState extends State<GameStatsScreen> with StatsHandler {
-  List<Map<String, dynamic>> games = [];
+  // List<Map<String, dynamic>> games = [];
+  Map<String, dynamic> games = {};
   bool isLoading = true;
 
   @override
@@ -24,27 +25,28 @@ class _GameStatsScreenState extends State<GameStatsScreen> with StatsHandler {
   }
 
   Future<void> fetchAndSetGames() async {
-    await Future.delayed(const Duration(seconds: 1));
-    //final fetchedGames = await fetchGames();
+    final stats = await fetchGames();
+    logger.i("fetching stats");
 
-    // if (fetchedGames != null) {
-    //   setState(() {
-    //     games = fetchedGames;
-    //     isLoading = false;
-    //   });
-    // } else {
-    //   setState(() {
-    //     isLoading = false;
-    //   });
-    //   debugPrint("Failed to fetch game data.");
-    // }
-    
-    setState(() {
-      games = dummyGames;
-      isLoading = false;
-    });
-
+    if (stats != null) {
+      setState(() {
+        print("setting state");
+        games = stats;
+      });
+      printPlayerStatsTable();
+    }
+    else{
+      print("stats is null");
+    }
   }
+
+  void printPlayerStatsTable() {
+    print("Game Stats:");
+    games.forEach((key, value) {
+      print("$key: $value");
+    });
+  }
+
 
   @override
   Widget build(BuildContext context) {

@@ -133,6 +133,12 @@ mixin BluetoothHandler {
           } else if (characteristic.uuid.toString() == PLAYERID_CHAR_UUID) {
             await characteristic.write(utf8.encode(PLAYERID));
             print("User ID updated.");
+          } else if (characteristic.uuid.toString() == RESET_CHAR_UUID) {
+            await characteristic.write(utf8.encode("0"));
+            print("Reset signal sent.");
+          } else if (characteristic.uuid.toString() == USE_TYPE_CHAR_UUID) {
+            await characteristic.write(utf8.encode("play"));
+            print("Use type updated.");
           }
         }
       }

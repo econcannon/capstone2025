@@ -1,5 +1,5 @@
 {
-    "cmake.sourceDirectory": "C:/Users/jembo/OneDrive - Northeastern University/Documents/GitHub/capstone2025/libraries/ArduinoJson",
+    "cmake.sourceDirectory": "C:/Users/Thuong Tran/Documents/GitHub/capstone2025/libraries/ArduinoJson/extras/tests/Cpp20",
     "files.associations": {
         "xstring": "cpp"
     }

@@ -40,7 +40,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen>
         print("setting state");
         playerStats = stats;
       });
-      printPlayerStatsTable();
+      //printPlayerStatsTable();
     }
     else{
       print("stats is null");

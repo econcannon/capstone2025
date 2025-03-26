@@ -79,7 +79,7 @@ mixin StatsHandler {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data != null && data != null) {
+        if (data != null) {
           return Map<String, dynamic>.from(data);
         }
       } else {
@@ -91,23 +91,20 @@ mixin StatsHandler {
     return null;
   }
 
-  Future<List<Map<String, dynamic>>?> fetchGames() async {
+  Future<Map<String, dynamic>?> fetchGames() async {
     try {
-      final response = await http.get(Uri.parse("$BASE_URL/player/game?gameId=$GAMEID"), headers: HEADERS);
+      final response = await http.get(Uri.parse("$BASE_URL/player/playerID=$PLAYERID"), headers: HEADERS);
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-
-        if (data.isNotEmpty) {
-          return data.map((game) => Map<String, dynamic>.from(game)).toList();
-        } else {
-          logger.e("No games found for the player.");
+        final data = json.decode(response.body);
+        if (data != null) {
+          return Map<String, dynamic>.from(data);
         }
       } else {
-        logger.e("Failed to load games. Status Code: ${response.statusCode}");
+        logger.e("Failed to fetch stats. Status Code: ${response.statusCode}. Response Body: ${response.body}");
       }
     } catch (e) {
-      logger.e("Error fetching games: $e");
+      logger.e("Error fetching stats: $e");
     }
     return null;
   }
