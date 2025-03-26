@@ -39,7 +39,7 @@ bool bleConnected = false;
 
 void setup() {
   Serial.begin(115200);
-  if (!Serial) delay(1000);
+  if (!Serial) delay(1000);   
 
   // BLE Setup
   if (!BLE.begin()) {
