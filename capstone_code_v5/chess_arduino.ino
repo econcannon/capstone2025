@@ -531,16 +531,21 @@ int read_input_from_buttons() {
         int reading = digitalRead(buttons[i]);
         // Only print debug info if state changes
         if (reading != lastButtonState[i]) {
-            Serial.print("Button ");
-            Serial.print(i);
-            Serial.print(" State: ");
-            Serial.println(reading);
+            //Serial.print("Button ");
+            //Serial.print(i);
+            //Serial.print(" State: ");
+            //Serial.println(reading);
             lastDebounceTime[i] = millis();
         }
         if ((millis() - lastDebounceTime[i]) > DEBOUNCE_DELAY) {
             if (reading == LOW && lastButtonState[i] == HIGH) {  
                 lastButtonState[i] = reading;
                 add_to_button_history(i);
+                lcd.clear();
+                lcd.setCursor(0,0);
+                lcd.print(buttons[i]);
+                lcd.print(" ");
+                lcd.print("press detected");
             return i;
             }
         }
@@ -678,6 +683,15 @@ void scan_grid_detect_pieces()
                 current_board_state[i - 1][j - 1] = 1;
                 // string lcdString = "Black piece @ ()" + i  ", " + j + ") " + sensorValue;
                 // update_lcd(message);
+                lcd.clear();
+                lcd.setCursor(0, 0);
+                lcd.print("Black @ ");
+                lcd.setCursor(5, 1);
+                lcd.print(i);
+                lcd.setCursor(6, 1);
+                lcd.print(",");
+                lcd.setCursor(7, 1);
+                lcd.print(j);
             }
             else if (sensorValue < lowerThresh & sensorValue >= 100)
             {
@@ -686,6 +700,15 @@ void scan_grid_detect_pieces()
                 current_board_state[i - 1][j - 1] = -1;
                 // string lcdString = "White piece @ ()" + i  ", " + j + ") " + sensorValue;
                 // update_lcd(message);
+                lcd.clear();
+                lcd.setCursor(0, 0);
+                lcd.print("White @ ");
+                lcd.setCursor(5, 1);
+                lcd.print(i);
+                lcd.setCursor(6, 1);
+                lcd.print(",");
+                lcd.setCursor(7, 1);
+                lcd.print(j);
             }
             else
             {
