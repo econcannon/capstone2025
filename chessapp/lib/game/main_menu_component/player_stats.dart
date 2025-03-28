@@ -24,6 +24,7 @@ class PlayerStatsScreen extends StatefulWidget {
 class _PlayerStatsScreenState extends State<PlayerStatsScreen>
     with StatsHandler {
   Map<String, dynamic> playerStats = {};
+  Map<String, dynamic> games = {};
 
   @override
   void initState() {
@@ -33,14 +34,17 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen>
 
   Future<void> fetchAndSetStats() async {
     final stats = await fetchStats();
+    final gamestats = await fetchGames();
+
     logger.i("fetching stats");
 
     if (stats != null) {
       setState(() {
         print("setting state");
         playerStats = stats;
+        //games = gamestats;
       });
-      //printPlayerStatsTable();
+      printPlayerStatsTable();
     }
     else{
       print("stats is null");

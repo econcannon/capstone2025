@@ -103,7 +103,7 @@ mixin FriendsHandler {
       } else {
         logger.e(response.body);
         logger.e(response.statusCode);
-        logger.e("Failed to send challenge.");
+        logger.e("Failed to accept challenge.");
       }
     } catch (e) {
       logger.e("Error accepting challenge: $e");
