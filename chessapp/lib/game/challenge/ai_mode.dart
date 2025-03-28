@@ -1,11 +1,19 @@
+// Flutter SDK imports
 import 'package:flutter/material.dart';
+
+// External package imports
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hexcolor/hexcolor.dart';
+import 'package:logger/logger.dart';
 
+// Project-specific imports
 import 'package:chessapp/components/constants.dart';
-import 'package:chessapp/game/chess.dart';
 import 'package:chessapp/components/create_game.dart';
+import 'package:chessapp/game/chess.dart';
 import 'package:chessapp/game/main_menu.dart';
+
+
+var logger = Logger();
 
 class AIOption extends StatelessWidget with CreateGame {
   const AIOption({super.key});
@@ -39,7 +47,8 @@ class AIOption extends StatelessWidget with CreateGame {
       ),
       body: Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0), // Add horizontal padding
+          padding: const EdgeInsets.symmetric(
+              horizontal: 20.0), // Add horizontal padding
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -55,7 +64,8 @@ class AIOption extends StatelessWidget with CreateGame {
     );
   }
 
-  Widget _buildDifficultyButton(BuildContext context, String difficulty, int depth) {
+  Widget _buildDifficultyButton(
+      BuildContext context, String difficulty, int depth) {
     return SizedBox(
       width: double.infinity, // Ensures all buttons are equal width
       height: 60, // Ensures all buttons are equal height
@@ -64,14 +74,14 @@ class AIOption extends StatelessWidget with CreateGame {
           final endpoint = Uri.parse(
               '$BASE_URL/create?playerID=$PLAYERID&ai=true&depth=$depth');
 
-          if (await createGame(endpoint)) {
-            print("Game created successfully");
+          final gameId = await createGame(endpoint);
+          if (gameId != null) {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => GamePage(gameId: GAMEID)),
+              MaterialPageRoute(builder: (context) => GamePage(gameId: gameId)),
             );
           } else {
-            print("Failed to create game");
+            logger.e("Failed to create game");
           }
         },
         style: ElevatedButton.styleFrom(

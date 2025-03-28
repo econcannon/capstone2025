@@ -1,16 +1,21 @@
+// Dart SDK imports
+import 'dart:convert';
+
+// Flutter imports
 import 'package:flutter/material.dart';
+
+// External package imports
 import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hexcolor/hexcolor.dart';
 import 'package:logger/logger.dart';
 
-import 'dart:convert';
-import '../chess.dart';
+// Project imports
 import '../../components/constants.dart';
+import '../chess.dart';
 import 'package:chessapp/game/connection/bluetooth.dart';
 import 'package:chessapp/game/connection/wifi.dart';
 import 'package:chessapp/game/main_menu.dart';
-
 var logger = Logger();
 
 class ViewOngoingGame extends StatefulWidget {
@@ -47,7 +52,7 @@ class _ViewOngoingGameState extends State<ViewOngoingGame>
         final data = json.decode(response.body);
         if (data != null && data['games'] != null) {
           setState(() {
-            games = List<Map<String, dynamic>>.from(data['games']);
+            games = List<Map<String, dynamic>>.from(data['games'].reversed);
           });
         }
       } else {

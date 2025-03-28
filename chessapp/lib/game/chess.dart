@@ -1,10 +1,9 @@
 // Dart SDK imports
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' as io;
+import 'dart:io' as io; 
 
 // Flutter package imports
-import 'package:chessapp/components/create_game.dart';
 import 'package:flutter/material.dart';
 
 // Third-party package imports
@@ -19,6 +18,7 @@ import 'package:hexcolor/hexcolor.dart';
 import '../components/constants.dart';
 import 'package:chessapp/components/button.dart';
 import 'package:chessapp/game/main_menu.dart';
+import 'package:chessapp/components/create_game.dart';
 
 var logger = Logger();
 
@@ -86,15 +86,26 @@ class _GamePage extends State<GamePage> with CreateGame {
           logger.i("You are playing as $playerColor");
           _updateGameState(fen);
         } else if (decodedMessage["message_type"] == "move") {
-          final opponentMove = decodedMessage["move"];
-          String opponentFrom = opponentMove["from"];
-          String opponentTo = opponentMove["to"];
-          logger.i("Opponent moved: $opponentFrom to $opponentTo");
+          final fen = decodedMessage["fen"];
+          final turn = decodedMessage["turn"];
+          final move = decodedMessage["move"];
 
-          String fen = decodedMessage["fen"];
+          if (fen == null || turn == null) {
+            logger.e("Missing FEN or turn in move message: $decodedMessage");
+            return;
+          }
+
           _updateGameState(fen);
 
-          if (decodedMessage["turn"] == playerColor?[0]) {
+          if (move != null) {
+            final from = move["from"];
+            final to = move["to"];
+            logger.i("Opponent moved: $from to $to");
+          } else {
+            logger.i("Move field missing — AI move");
+          }
+
+          if (turn == playerColor?[0]) {
             logger.i("Your turn!");
           }
         } else if (decodedMessage["message_type"] == "confirmation") {
@@ -225,7 +236,8 @@ class _GamePage extends State<GamePage> with CreateGame {
                   final endpoint = Uri.parse(
                       '$BASE_URL/create?playerID=$PLAYERID&ai=false&depth=1');
 
-                  if (await createGame(endpoint)) {
+                  final gameId = await createGame(endpoint);
+                  if (gameId != null) {
                     logger.i("Game created successfully");
                     Navigator.push(
                       context,

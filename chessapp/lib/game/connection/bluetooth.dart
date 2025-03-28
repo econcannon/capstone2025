@@ -1,8 +1,13 @@
+// Dart SDK imports
 import 'dart:convert';
+
+// Third-party package imports
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:chessapp/components/constants.dart';
 import 'package:logger/logger.dart';
+
+// Project imports
+import 'package:chessapp/components/constants.dart';
 
 var logger = Logger();
 
@@ -31,8 +36,8 @@ mixin BluetoothHandler {
       return;
     }
 
-    print("All required permissions granted.");
-    print("Starting Bluetooth scan...");
+    logger.i("All required permissions granted.");
+    logger.i("Starting Bluetooth scan...");
   }
 
   Future startScan() async {
@@ -87,7 +92,7 @@ mixin BluetoothHandler {
     for (var result in scanResults) {
       if (result.device.platformName == ARDUINO_NAME) {
         arduinoDevice = result.device;
-        print(
+        logger.i(
             "Found Arduino: ${arduinoDevice.platformName} (${arduinoDevice.remoteId})");
         break;
       }
@@ -109,7 +114,7 @@ mixin BluetoothHandler {
       _connectedDevice = arduinoDevice;
       isBluetoothConnected = true;
     } catch (e) {
-      print("Error connecting to Arduino: $e");
+      logger.e("Error connecting to Arduino: $e");
     }
   }
 
@@ -173,8 +178,8 @@ mixin BluetoothHandler {
       Map<String, dynamic> game, String ssid, String password) async {
     try {
       await updateCharacteristics(game, ssid, password);
-      print("Game data transmitted: ${game['gameID']}");
-      print("Wi-Fi SSID: $ssid, Password: $password");
+      logger.i("Game data transmitted: ${game['gameID']}");
+      logger.i("Wi-Fi SSID: $ssid, Password: $password");
     } catch (e) {
       print("Error transmitting game to board: $e");
     }

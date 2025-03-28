@@ -1,7 +1,12 @@
-import 'package:http/http.dart' as http;
+// Dart SDK imports
 import 'dart:convert';
-import '../../components/constants.dart';
+
+// External package imports
+import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
+
+// Project imports
+import '../../components/constants.dart';
 
 var logger = Logger();
 

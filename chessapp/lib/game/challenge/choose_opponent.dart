@@ -1,8 +1,12 @@
+// Flutter SDK imports
 import 'package:flutter/material.dart';
+
+// External package imports
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hexcolor/hexcolor.dart';
 import 'package:logger/logger.dart';
 
+// Project-specific imports
 import 'package:chessapp/components/constants.dart';
 import 'package:chessapp/components/create_game.dart';
 import 'package:chessapp/game/chess.dart';
@@ -52,20 +56,16 @@ class _PlayOptionState extends State<PlayOption> with CreateGame {
                   final endpoint = Uri.parse(
                       '$BASE_URL/create?playerID=$PLAYERID&ai=false&depth=1');
 
-                  if (await createGame(endpoint)) {
+                  final gameId = await createGame(endpoint);
+                  if (gameId != null) {
                     logger.i("Game created successfully");
-                    if (await createGame(endpoint)) {
-                      logger.i("Game created successfully");
-                      if (mounted) {
-                        Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => GamePage(gameId: GAMEID)),
-                        );
-                      }
-                    } else {
-                      logger.e("Failed to create game");
+                    if (mounted) {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => GamePage(gameId: GAMEID)),
+                      );
                     }
                   } else {
                     logger.e("Failed to create game");
