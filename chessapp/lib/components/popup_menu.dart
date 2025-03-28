@@ -67,9 +67,9 @@ class _InputDialogState extends State<InputDialog> {
                   child: ElevatedButton(
                     onPressed: () {
                       final inputText = _controller.text.trim();
+                      print("Input: $inputText");
                       if (inputText.isNotEmpty) {
                         widget.onConfirm(inputText);
-                        Navigator.pop(context);
                       }
                     },
                     style: ElevatedButton.styleFrom(

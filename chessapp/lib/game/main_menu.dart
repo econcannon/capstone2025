@@ -15,8 +15,7 @@ import 'package:chessapp/game/main_menu_component/player_stats.dart';
 import 'package:chessapp/game/main_menu_component/side_menu.dart';
 import 'package:chessapp/game/challenge/choose_opponent.dart';
 import 'package:chessapp/game/chess.dart';
-//import 'package:chessapp/old_challenge_friends.dart';
-
+import 'package:chessapp/old_challenge_friends.dart';
 
 var logger = Logger();
 
@@ -28,7 +27,8 @@ class MainMenu extends StatefulWidget {
 }
 
 class _MainMenu extends State<MainMenu> {
-  void iniitState() {
+  @override
+  void initState() {
     super.initState();
   }
 
@@ -112,28 +112,33 @@ class _MainMenu extends State<MainMenu> {
             BuildMenuButton(
               label: 'Join Game by ID',
               onPressed: () {
-                showDialog(
+                showDialog<String>(
                   context: context,
                   builder: (context) => InputDialog(
                     title: "Enter Game ID",
                     hintText: "Game ID",
                     buttonText: "Join",
                     onConfirm: (gameId) {
-                      GAMEID = gameId;
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => GamePage(gameId: GAMEID)),
-                      );
+                      Navigator.of(context).pop(gameId);
                     },
                   ),
-                );
+                ).then((gameId) {
+                  if (gameId != null && gameId.isNotEmpty) {
+                    GAMEID = gameId;
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => GamePage(gameId: GAMEID),
+                      ),
+                    );
+                  }
+                });
               },
             ),
-            BuildMenuButton(
-              label: 'Join Public Game',
-              onPressed: () {},
-            ),
+            // BuildMenuButton(
+            //   label: 'Join Public Game',
+            //   onPressed: () {},
+            // ),
             BuildMenuButton(
               label: 'View Your Ongoing Games',
               onPressed: () {
@@ -145,17 +150,17 @@ class _MainMenu extends State<MainMenu> {
                 );
               },
             ),
-            // BuildMenuButton(
-            //   label: 'Friends',
-            //   onPressed: () {
-            //     Navigator.push(
-            //       context,
-            //       MaterialPageRoute(
-            //         builder: (context) => const FriendsPage(),
-            //       ),
-            //     );
-            //   },
-            // ),
+            BuildMenuButton(
+              label: 'Friends',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const FriendsPage(),
+                  ),
+                );
+              },
+            ),
             BuildMenuButton(
               label: 'Testing Stats Page',
               onPressed: () {

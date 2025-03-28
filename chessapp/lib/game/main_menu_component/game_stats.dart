@@ -14,8 +14,8 @@ class GameStatsScreen extends StatefulWidget {
 }
 
 class _GameStatsScreenState extends State<GameStatsScreen> with StatsHandler {
-  // List<Map<String, dynamic>> games = [];
-  Map<String, dynamic> games = {};
+  List<Map<String, dynamic>> games = [];
+  //Map<String, dynamic> games = {};
   bool isLoading = true;
 
   @override
@@ -25,44 +25,63 @@ class _GameStatsScreenState extends State<GameStatsScreen> with StatsHandler {
   }
 
   Future<void> fetchAndSetGames() async {
-    final stats = await fetchGames();
-    logger.i("fetching stats");
-
-    if (stats != null) {
+    final data = await fetchGames();
+    if (data != null) {
       setState(() {
-        print("setting state");
-        games = stats;
+        games = data;
+        isLoading = false;
       });
-      printPlayerStatsTable();
+    } else {
+      setState(() => isLoading = false);
     }
-    else{
-      print("stats is null");
-    }
+    printGamesList();
   }
 
-  void printPlayerStatsTable() {
-    print("Game Stats:");
-    games.forEach((key, value) {
-      print("$key: $value");
-    });
-  }
+  void printGamesList() {
+    if (games.isEmpty) {
+      print("No games found.");
+      return;
+    }
 
+    // print("Games List:");
+    // for (var i = 0; i < games.length; i++) {
+    //   final game = games[i];
+    //   print("Game ${i + 1}:");
+    //   print("  Game ID: ${game["id"] ?? game["gameID"]}");
+    //   print("  White Player: ${game["player_white"] ?? "Unknown"}");
+    //   print("  Black Player: ${game["player_black"] ?? "Unknown"}");
+    //   print("  Winner: ${game["winner"] ?? "Ongoing"}");
+    //   print("  Ended At: ${game["ended_at"] ?? "In progress"}");
+    //   print("  Moves: ${game["moves"] ?? "No moves available"}");
+    //   print("-----------------------------");
+    // }
+    print("Games List:");
+    for (var i = 0; i < games.length; i++) {
+      final game = games[i];
+      print("Game ${i + 1}:");
+      print(game); // Print the entire game object
+      print("-----------------------------");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return isLoading
-        ? const Center(child: CircularProgressIndicator())
-        : ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            itemCount: games.length,
-            itemBuilder: (context, index) {
-              final game = games[index];
-              return buildGameCard(context, game);
-            },
-          );
+    if (isLoading) return const Center(child: CircularProgressIndicator());
+    if (games.isEmpty) return const Center(child: Text("No games found."));
+
+    return Scaffold(
+      body: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: games.length,
+        itemBuilder: (context, index) {
+          final game = games[index];
+          return buildGameCard(context, game);
+        },
+      ),
+    );
   }
 
-  Widget buildGameCard(BuildContext context, dynamic game) {
+  Widget buildGameCard(BuildContext context, Map<String, dynamic> game) {
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -81,17 +100,17 @@ class _GameStatsScreenState extends State<GameStatsScreen> with StatsHandler {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("Game ID: ${game["id"]}",
+              Text("Game ID: ${game["id"] ?? game["gameID"]}",
                   style: GoogleFonts.dmSans(
                       fontSize: 16, fontWeight: FontWeight.bold)),
-              Text("White: ${game["player_white"]}",
+              Text("White: ${game["player_white"] ?? "?"}",
                   style: GoogleFonts.dmSans(fontSize: 14)),
-              Text("Black: ${game["player_black"]}",
+              Text("Black: ${game["player_black"] ?? "?"}",
                   style: GoogleFonts.dmSans(fontSize: 14)),
-              Text("Winner: ${game["winner"]}",
+              Text("Winner: ${game["winner"] ?? "Ongoing"}",
                   style: GoogleFonts.dmSans(
                       fontSize: 14, fontWeight: FontWeight.bold)),
-              Text("Ended At: ${game["ended_at"]}",
+              Text("Ended At: ${game["ended_at"] ?? "In progress"}",
                   style: GoogleFonts.dmSans(
                       fontSize: 14, color: HexColor("#44564A"))),
             ],
@@ -103,12 +122,13 @@ class _GameStatsScreenState extends State<GameStatsScreen> with StatsHandler {
 }
 
 class GameDetailsScreen extends StatelessWidget {
-  final dynamic game;
+  final Map<String, dynamic> game;
 
   const GameDetailsScreen({super.key, required this.game});
 
   @override
   Widget build(BuildContext context) {
+    final moves = List<String>.from(game["moves"]);
     return Scaffold(
       appBar: AppBar(
         title: Text("Game ID: ${game["id"]}",
@@ -130,7 +150,7 @@ class GameDetailsScreen extends StatelessWidget {
             Text("Black: ${game["player_black"]}",
                 style: GoogleFonts.dmSans(
                     fontSize: 16, fontWeight: FontWeight.bold)),
-            Text("Winner: ${game["winner"]}",
+            Text("Winner: ${game["winner"] ?? "Ongoing"}",
                 style: GoogleFonts.dmSans(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -144,19 +164,20 @@ class GameDetailsScreen extends StatelessWidget {
             const SizedBox(height: 10),
             Expanded(
               child: ListView.builder(
-                itemCount: game["moves"].length,
+                itemCount: moves.length,
                 itemBuilder: (context, index) {
-                  final move = game["moves"][index];
+                  final move = moves[index];
+                  final color = index % 2 == 0 ? "white" : "black";
                   return ListTile(
                     leading: Text("#${index + 1}",
                         style: GoogleFonts.dmSans(
                             fontSize: 16, fontWeight: FontWeight.bold)),
                     title: Text(
-                      "From: ${move["from"]} → To: ${move["to"]}",
+                      "Move: $move",
                       style: GoogleFonts.dmSans(fontSize: 16),
                     ),
                     trailing: Text(
-                      move["color"] == "white" ? "⚪ White" : "⚫ Black",
+                      color == "white" ? "⚪ White" : "⚫ Black",
                       style: GoogleFonts.dmSans(
                           fontSize: 16, fontWeight: FontWeight.bold),
                     ),
@@ -170,49 +191,3 @@ class GameDetailsScreen extends StatelessWidget {
     );
   }
 }
-
-// Dummy Data for Testing
-List<Map<String, dynamic>> dummyGames = [
-  {
-    "id": 1,
-    "player_white": "Alice",
-    "player_black": "Bob",
-    "winner": "white",
-    "status": "completed",
-    "ended_at": "2025-03-15T12:30:00Z",
-    "moves": [
-      {"from": "e2", "to": "e4", "color": "white"},
-      {"from": "e7", "to": "e5", "color": "black"},
-      {"from": "g1", "to": "f3", "color": "white"},
-      {"from": "b8", "to": "c6", "color": "black"}
-    ]
-  },
-  {
-    "id": 2,
-    "player_white": "Charlie",
-    "player_black": "David",
-    "winner": "black",
-    "status": "completed",
-    "ended_at": "2025-03-16T14:45:00Z",
-    "moves": [
-      {"from": "d2", "to": "d4", "color": "white"},
-      {"from": "d7", "to": "d5", "color": "black"},
-      {"from": "c1", "to": "f4", "color": "white"},
-      {"from": "g8", "to": "f6", "color": "black"}
-    ]
-  },
-  {
-    "id": 3,
-    "player_white": "Eve",
-    "player_black": "Frank",
-    "winner": "white",
-    "status": "completed",
-    "ended_at": "2025-03-17T09:15:00Z",
-    "moves": [
-      {"from": "e2", "to": "e4", "color": "white"},
-      {"from": "c7", "to": "c5", "color": "black"},
-      {"from": "g1", "to": "f3", "color": "white"},
-      {"from": "d7", "to": "d6", "color": "black"}
-    ]
-  }
-];
