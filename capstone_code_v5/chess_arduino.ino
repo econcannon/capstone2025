@@ -7,6 +7,17 @@
 #include <tuple>
 #include <utility>
 
+const int BUTTON_HISTORY_SIZE = 10;
+const int UP_PIN = 23;
+const int DOWN_PIN = 25;
+const int LEFT_PIN = 27;
+const int RIGHT_PIN = 29;
+const int SELECT_PIN = 31;
+const unsigned long DEBOUNCE_DELAY = 0.5;
+// Button press history stack
+int buttonPressHistory[BUTTON_HISTORY_SIZE];
+int buttonhistoryIndex = 0;
+
 // Hall sensor pin assignments and thresholds
 const int rowOne = 22;
 const int rowTwo = 24;
@@ -111,6 +122,18 @@ void setup()
     pinMode(rowFive, OUTPUT);
     pinMode(rowSix, OUTPUT);
     pinMode(rowSeven, OUTPUT);
+
+    // Set all button pins as inputs with pull-up resistors
+    pinMode(UP_PIN, INPUT_PULLUP);
+    pinMode(DOWN_PIN, INPUT_PULLUP);
+    pinMode(LEFT_PIN, INPUT_PULLUP);
+    pinMode(RIGHT_PIN, INPUT_PULLUP);
+    pinMode(SELECT_PIN, INPUT_PULLUP);
+
+    // Initialize history with -1
+    for (int i = 0; i < BUTTON_HISTORY_SIZE; i++) {
+        buttonPressHistory[i] = -1;
+    }
 
     // Initialize global vars
     clear_characteristics();
@@ -480,6 +503,69 @@ void get_messages()
             Serial.println("Unknown message type: " + messageType);
         }
     }
+}
+
+// Function to add to button press history
+void add_to_button_history(int buttonPressed) {
+  // Shift existing history
+    for (int i = BUTTON_HISTORY_SIZE - 1; i > 0; i--) {
+        buttonPressHistory[i] = buttonPressHistory[i-1];
+    }
+        // Add new press to front of history
+        buttonPressHistory[0] = buttonPressed;
+    }
+
+// Get the last button pressed (can be used for "back" functionality)
+int get_last_button_press() {
+    return buttonPressHistory[0];
+}
+
+// Read input from buttons with debounce
+int read_input_from_buttons() {
+    static unsigned long lastDebounceTime[5] = {0, 0, 0, 0, 0};
+    static int lastButtonState[5] = {HIGH, HIGH, HIGH, HIGH, HIGH};
+
+    int buttons[] = {UP_PIN, DOWN_PIN, LEFT_PIN, RIGHT_PIN, SELECT_PIN};
+
+    for (int i = 0; i < 5; i++) {
+        int reading = digitalRead(buttons[i]);
+        // Only print debug info if state changes
+        if (reading != lastButtonState[i]) {
+            Serial.print("Button ");
+            Serial.print(i);
+            Serial.print(" State: ");
+            Serial.println(reading);
+            lastDebounceTime[i] = millis();
+        }
+        if ((millis() - lastDebounceTime[i]) > DEBOUNCE_DELAY) {
+            if (reading == LOW && lastButtonState[i] == HIGH) {  
+                lastButtonState[i] = reading;
+                add_to_button_history(i);
+            return i;
+            }
+        }
+        lastButtonState[i] = reading;
+    }
+    return -1;
+}
+
+void read_menu_buttons_loop() {
+    int buttonPressed = read_input_from_buttons();
+
+    if (buttonPressed != -1) {  
+        Serial.print("Button Pressed: ");
+    switch (buttonPressed) {
+        case 0: Serial.println("UP"); break;
+        case 1: Serial.println("DOWN"); break;
+        case 2: Serial.println("LEFT"); break;
+        case 3: Serial.println("RIGHT"); break;
+        case 4: Serial.println("SELECT"); break;
+    }
+
+    Serial.print("Last button pressed: ");
+    Serial.println(get_last_button_press());
+    }
+    delay(100);  // Prevents spamming
 }
 
 // HALL SENSOR FUNCTIONS
