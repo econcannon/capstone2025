@@ -7,16 +7,70 @@
 #include <tuple>
 #include <utility>
 
-const int BUTTON_HISTORY_SIZE = 10;
-const int UP_PIN = 23;
-const int DOWN_PIN = 25;
-const int LEFT_PIN = 27;
-const int RIGHT_PIN = 29;
-const int SELECT_PIN = 31;
-const unsigned long DEBOUNCE_DELAY = 0.5;
-// Button press history stack
-int buttonPressHistory[BUTTON_HISTORY_SIZE];
-int buttonhistoryIndex = 0;
+const int buttonUpPin    = 29;
+const int buttonDownPin  = 30;
+const int buttonLeftPin  = 31;
+const int buttonRightPin = 32;
+
+// Flags for each button
+volatile bool upPressed = false;
+volatile bool downPressed = false;
+volatile bool leftPressed = false;
+volatile bool rightPressed = false;
+
+// Debounce timers for each button
+unsigned long lastDebounceUp = 0;
+unsigned long lastDebounceDown = 0;
+unsigned long lastDebounceLeft = 0;
+unsigned long lastDebounceRight = 0;
+const unsigned long debounceDelay = 50;  // milliseconds
+
+// Global variables for ease of use between functions
+bool gameOver = false;
+String winner = "";
+bool myTurn = false;
+bool opponentsTurn = false;
+String myColor = "";
+String fromSquare = "";
+String toSquare = "";
+String last_move = "";
+volatile bool inMenu = false; // For the purpose of interrupts, determining current state
+volatile bool inGetMove = false;
+volatile bool sendButtonPressed = false;
+
+// Interrupt handlers
+void handleUp() {
+  unsigned long now = millis();
+  if (now - lastDebounceUp > debounceDelay) {
+    upPressed = true;
+    lastDebounceUp = now;
+  }
+}
+
+void handleDown() {
+  unsigned long now = millis();
+  if (now - lastDebounceDown > debounceDelay) {
+    downPressed = true;
+    lastDebounceDown = now;
+  }
+}
+
+void handleLeft() {
+  unsigned long now = millis();
+  if (now - lastDebounceLeft > debounceDelay) {
+    leftPressed = true;
+    lastDebounceLeft = now;
+  }
+}
+
+void handleRight() {
+  unsigned long now = millis();
+  if (now - lastDebounceRight > debounceDelay) {
+    rightPressed = true;
+    lastDebounceRight = now;
+    if (inGetMove) {sendButtonPressed = true;}
+  }
+}
 
 // Hall sensor pin assignments and thresholds
 const int rowOne = 22;
@@ -124,16 +178,16 @@ void setup()
     pinMode(rowSeven, OUTPUT);
 
     // Set all button pins as inputs with pull-up resistors
-    pinMode(UP_PIN, INPUT_PULLUP);
-    pinMode(DOWN_PIN, INPUT_PULLUP);
-    pinMode(LEFT_PIN, INPUT_PULLUP);
-    pinMode(RIGHT_PIN, INPUT_PULLUP);
-    pinMode(SELECT_PIN, INPUT_PULLUP);
+    pinMode(buttonUpPin, INPUT_PULLUP);
+    pinMode(buttonDownPin, INPUT_PULLUP);
+    pinMode(buttonLeftPin, INPUT_PULLUP);
+    pinMode(buttonRightPin, INPUT_PULLUP);
 
-    // Initialize history with -1
-    for (int i = 0; i < BUTTON_HISTORY_SIZE; i++) {
-        buttonPressHistory[i] = -1;
-    }
+    attachInterrupt(digitalPinToInterrupt(buttonUpPin), handleUp, RISING);
+    attachInterrupt(digitalPinToInterrupt(buttonDownPin), handleDown, RISING);
+    attachInterrupt(digitalPinToInterrupt(buttonLeftPin), handleLeft, RISING);
+    attachInterrupt(digitalPinToInterrupt(buttonRightPin), handleRight, RISING);
+
 
     // Initialize global vars
     clear_characteristics();
@@ -306,38 +360,33 @@ void connect_to_bluetooth()
     Serial.println("Bluetooth connected");
 }
 
-// Global variables for ease of use between functions
-bool gameOver = false;
-String winner = "";
-bool myTurn = false;
-bool opponentsTurn = false;
-String myColor = "";
-String fromSquare = "";
-String toSquare = "";
-String last_move = "";
 
 
 // SCAN BOARD AND DETECT PIECE CHANGES 
-// std::pair<String, String> get_move() {
-//     scan_grid_detect_pieces();
-//     // Add logic to determine fromSquare and toSquare
-//     // For now, returning empty strings as placeholders
-//     return std::make_pair("", "");
-// }
-
 std::pair<String, String> get_move() {
-  Serial.print("Enter move from (e.g., e2): ");
-  while (Serial.available() == 0) {}
-  String fromSquare = Serial.readStringUntil('\n');
-  fromSquare.trim();
-
-  // Get the "to" square
-  Serial.print("Enter move to (e.g., e4): ");
-  while (Serial.available() == 0) {}
-  String toSquare = Serial.readStringUntil('\n');
-  toSquare.trim();
-  return {fromSquare, toSquare};
+    inGetMove = true;
+    while (!fromSquare && !toSquare && !sendButtonPressed) {
+    scan_grid_detect_pieces();
+    track_changes();
+    update_lcd("Detected move: from " + fromSquare + " to " + toSquare);
+    }
+    inGetMove = false;
+    return {fromSquare, toSquare};
 }
+
+// std::pair<String, String> get_move() {
+//   Serial.print("Enter move from (e.g., e2): ");
+//   while (Serial.available() == 0) {}
+//   String fromSquare = Serial.readStringUntil('\n');
+//   fromSquare.trim();
+
+//   // Get the "to" square
+//   Serial.print("Enter move to (e.g., e4): ");
+//   while (Serial.available() == 0) {}
+//   String toSquare = Serial.readStringUntil('\n');
+//   toSquare.trim();
+//   return {fromSquare, toSquare};
+// }
 
 
 void play_game()
@@ -440,133 +489,75 @@ void get_messages()
         Serial.println(response);
 
         JSONVar parsedResponse = JSON.parse(response);
-
-        String messageType = parsedResponse["message_type"];
-
-        // Opponents move
-        if (messageType == "move")
-        {
-            fromSquare = (const char *)parsedResponse["move"]["from"];
-            toSquare = (const char *)parsedResponse["move"]["to"];
-            Serial.print("Opponent moved from ");
-            Serial.print(fromSquare);
-            Serial.print(" to ");
-            Serial.println(toSquare);
-            myTurn = true;
-            opponentsTurn = false;
-            gameOver = parsedResponse["game_over"];
-            bool checkmate = parsedResponse["checkmate"];
-            String color = (const char *)parsedResponse["color"];
-            if (gameOver & checkmate)
-                handle_game_over(color, other_color(color));
-            if (gameOver & !checkmate)
-                handle_game_over("", "");
-            fen_to_expected_board((const char *)parsedResponse["fen"]);
-            validate_opponent_move();
-        }
-        // This section is happening in sendMove now
-        // // Confirms my move
-        // else if (messageType == "confirmation")
-        // {
-        //     myTurn = false;
-        //     opponentsTurn = true;
-        //     gameOver = parsedResponse["game_over"];
-        //     checkmate = parsedResponse["checkmate"];
-        //     if (gameOver & checkmate)
-        //         handle_game_over((const char *)parsedResponse["color"]);
-        //     if (gameOver & !checkmate)
-        //         handle_game_over("");
-        //     Serial.println("Move confirmed!");
-        //     fen_to_expected_board((const char *)parsedResponse["fen"]);
-        // }
-        // Game over
-        else if (messageType == "game-state")
-        {
-            myColor = (const char *)parsedResponse["color"];
-            String turn = (const char *)parsedResponse["turn"];
-            if (myColor[0] == turn[0]) {
-              myTurn = true;
-              opponentsTurn = false;
-            }
-            fen_to_expected_board((const char *)parsedResponse["fen"]);
-            last_move = (const char *)parsedResponse["lastMove"];
-            if (last_move != nullptr) update_lcd("Last move was: " + last_move);
-        }
-
-        else if (messageType == "error")
-        {
-            String error = (const char *)parsedResponse["error"];
-            Serial.println("Invalid move. Try again. Error message: " + error);
-        }
-        else
-        {
-            Serial.println("Unknown message type: " + messageType);
-        }
+        handle_message(parsedResponse);
     }
 }
 
-// Function to add to button press history
-void add_to_button_history(int buttonPressed) {
-  // Shift existing history
-    for (int i = BUTTON_HISTORY_SIZE - 1; i > 0; i--) {
-        buttonPressHistory[i] = buttonPressHistory[i-1];
-    }
-        // Add new press to front of history
-        buttonPressHistory[0] = buttonPressed;
-    }
 
-// Get the last button pressed (can be used for "back" functionality)
-int get_last_button_press() {
-    return buttonPressHistory[0];
+void handle_message(JSONVar parsedResponse) {
+  String messageType = parsedResponse["message_type"];
+
+  // Opponents move
+  if (messageType == "move")
+  {
+      String opponentFromSquare = (const char *)parsedResponse["move"]["from"];
+      String opponentToSquare = (const char *)parsedResponse["move"]["to"];
+      Serial.print("Opponent moved from ");
+      Serial.print(opponentFromSquare);
+      Serial.print(" to ");
+      Serial.println(opponentToSquare);
+      myTurn = true;
+      opponentsTurn = false;
+      gameOver = parsedResponse["game_over"];
+      bool checkmate = parsedResponse["checkmate"];
+      String color = (const char *)parsedResponse["color"];
+      if (gameOver & checkmate)
+          handle_game_over(color, other_color(color));
+      if (gameOver & !checkmate)
+          handle_game_over("", "");
+      fen_to_expected_board((const char *)parsedResponse["fen"]);
+      validate_opponent_move();
+  }
+  // This section is happening in sendMove now
+  // // Confirms my move
+  // else if (messageType == "confirmation")
+  // {
+  //     myTurn = false;
+  //     opponentsTurn = true;
+  //     gameOver = parsedResponse["game_over"];
+  //     checkmate = parsedResponse["checkmate"];
+  //     if (gameOver & checkmate)
+  //         handle_game_over((const char *)parsedResponse["color"]);
+  //     if (gameOver & !checkmate)
+  //         handle_game_over("");
+  //     Serial.println("Move confirmed!");
+  //     fen_to_expected_board((const char *)parsedResponse["fen"]);
+  // }
+  // Game over
+  else if (messageType == "game-state")
+  {
+      myColor = (const char *)parsedResponse["color"];
+      String turn = (const char *)parsedResponse["turn"];
+      if (myColor[0] == turn[0]) {
+        myTurn = true;
+        opponentsTurn = false;
+      }
+      fen_to_expected_board((const char *)parsedResponse["fen"]);
+      last_move = (const char *)parsedResponse["lastMove"];
+      if (last_move != nullptr) update_lcd("Last move was: " + last_move);
+  }
+
+  else if (messageType == "error")
+  {
+      String error = (const char *)parsedResponse["error"];
+      Serial.println("Invalid move. Try again. Error message: " + error);
+  }
+  else
+  {
+      Serial.println("Unknown message type: " + messageType);
+  }
 }
 
-// Read input from buttons with debounce
-int read_input_from_buttons() {
-    static unsigned long lastDebounceTime[5] = {0, 0, 0, 0, 0};
-    static int lastButtonState[5] = {HIGH, HIGH, HIGH, HIGH, HIGH};
-
-    int buttons[] = {UP_PIN, DOWN_PIN, LEFT_PIN, RIGHT_PIN, SELECT_PIN};
-
-    for (int i = 0; i < 5; i++) {
-        int reading = digitalRead(buttons[i]);
-        // Only print debug info if state changes
-        if (reading != lastButtonState[i]) {
-            Serial.print("Button ");
-            Serial.print(i);
-            Serial.print(" State: ");
-            Serial.println(reading);
-            lastDebounceTime[i] = millis();
-        }
-        if ((millis() - lastDebounceTime[i]) > DEBOUNCE_DELAY) {
-            if (reading == LOW && lastButtonState[i] == HIGH) {  
-                lastButtonState[i] = reading;
-                add_to_button_history(i);
-            return i;
-            }
-        }
-        lastButtonState[i] = reading;
-    }
-    return -1;
-}
-
-void read_menu_buttons_loop() {
-    int buttonPressed = read_input_from_buttons();
-
-    if (buttonPressed != -1) {  
-        Serial.print("Button Pressed: ");
-    switch (buttonPressed) {
-        case 0: Serial.println("UP"); break;
-        case 1: Serial.println("DOWN"); break;
-        case 2: Serial.println("LEFT"); break;
-        case 3: Serial.println("RIGHT"); break;
-        case 4: Serial.println("SELECT"); break;
-    }
-
-    Serial.print("Last button pressed: ");
-    Serial.println(get_last_button_press());
-    }
-    delay(100);  // Prevents spamming
-}
 
 // HALL SENSOR FUNCTIONS
 void set_hall_row_voltage(int value)
@@ -759,9 +750,13 @@ void send_move(String fromSquare, String toSquare)
                         handle_game_over("", "");
                     fen_to_expected_board((const char *)parsedResponse["fen"]);
                     update_last_board_state();
+
+                    // Reset move coordinates
+                    fromSquare = "";
+                    toSquare = "";
                     break;
                 }
-                else if (messageType == "error")
+                else if (messageType == "error") // this format of sending and receiving could cause duplicate send attempts
                 {
                     String error = (const char *)parsedResponse["error"];
                     Serial.println("Invalid move. Try again. Error message: " + error);
@@ -769,6 +764,7 @@ void send_move(String fromSquare, String toSquare)
                 }
                 else
                 {
+                    handle_message(parsedResponse);
                     break;
                 }
             }
@@ -981,4 +977,97 @@ void update_last_board_state() {
             last_board_state[row][col] = expected_board_state[row][col];
         }
     }
+}
+
+
+// Store up to 5 sets of difference data
+const int NUM_DIFFS = 5;
+int diffHistory[NUM_DIFFS][64][3]; // Up to 64 diffs to allow for extreme case of every position changing
+int diffCounts[NUM_DIFFS];
+int diffIndex = 0;
+
+
+// Convert index to chess square notation (e.g., e2, e4)
+String indexToSquare(int row, int col) {
+  char file = 'a' + col;
+  int rank = 8 - row;
+  return String(file) + String(rank);
+}
+
+// Compare current board with expected board and record differences
+int getDifferences(int diffs[][3]) {
+  int count = 0;
+  for (int row = 0; row < 8; row++) {
+    for (int col = 0; col < 8; col++) {
+      if (expected_board_state[row][col] != current_board_state[row][col]) {
+        diffs[count][0] = row;
+        diffs[count][1] = col;
+        diffs[count][2] = current_board_state[row][col];
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+// Save current difference data
+void recordDiffHistory(int diffs[][3], int count) {
+  for (int i = 0; i < count; i++) {
+    diffHistory[diffIndex][i][0] = diffs[i][0];
+    diffHistory[diffIndex][i][1] = diffs[i][1];
+    diffHistory[diffIndex][i][2] = diffs[i][2];
+  }
+  diffCounts[diffIndex] = count;
+  diffIndex = (diffIndex + 1) % NUM_DIFFS;
+}
+
+// Check if last NUM_DIFFS differences have been the same
+bool isStableChange() {
+  for (int i = 1; i < NUM_DIFFS; i++) {
+    if (diffCounts[i] != diffCounts[0]) return false;
+    for (int j = 0; j < diffCounts[0]; j++) {
+      for (int k = 0; k < 3; k++) {
+        if (diffHistory[i][j][k] != diffHistory[0][j][k]) return false;
+      }
+    }
+  }
+  return true;
+}
+
+void track_changes() {
+  int diffs[64][3];
+  int count = getDifferences(diffs);
+  recordDiffHistory(diffs, count);
+
+  if (count > 0 && isStableChange()) {
+    if (count == 2) {
+      for (int i = 0; i < count; i++) {
+        int row = diffs[i][0];
+        int col = diffs[i][1];
+        int newVal = diffs[i][2];
+        int oldVal = expected_board_state[row][col];
+
+        if (newVal == 0 && (oldVal == 1 || oldVal == -1)) {
+          fromSquare = indexToSquare(row, col);
+        } else if (oldVal == 0 && (newVal == 1 || newVal == -1)) {
+          toSquare = indexToSquare(row, col);
+        }
+      }
+      if (fromSquare != "" && toSquare != "") {
+        Serial.print("Move detected: fromSquare = ");
+        Serial.print(fromSquare);
+        Serial.print(", toSquare = ");
+        Serial.println(toSquare);
+      }
+    } else if (count == 4) {
+      Serial.println("Castling or promotion detected. Placeholder for further implementation.");
+    }
+
+    // Update expected board to match current board
+    for (int row = 0; row < 8; row++) {
+      for (int col = 0; col < 8; col++) {
+        expected_board_state[row][col] = current_board_state[row][col];
+      }
+    }
+  }
 }
