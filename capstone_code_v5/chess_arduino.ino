@@ -121,10 +121,10 @@ void loop()
 {
     
     wait_for_bluetooth_credentials(); // Only need ble until game start
-    if (strcmp(useType, "play")) {
+    if (String(useType) == "play") {
         play_game(); // Starts the game with proper connection
     }
-    else if (strcmp(useType, "replay")) {
+    else if (String(useType) == "replay") {
         replay_game(); // ReVIsualize history of a completed game
     }       
     delay(1000);
@@ -245,9 +245,9 @@ void wait_for_bluetooth_credentials() {
         while (central.connected()) {
           read_ble_characteristics();
         //   if (strlen(ssid) > 0 && strlen(password) > 0 && strlen(gameID) > 0 && strlen(playerID) > 0) {
-        if (strlen(ssid) > 0 && strlen(password) > 0) {
-            Serial.println("All credentials received.");
-            return;
+          if (strlen(ssid) > 0 && strlen(password) > 0 && strlen(gameID) > 0 && strlen(playerID) > 0 && strlen(useType) > 0) {
+              Serial.println("All credentials received.");
+              return;
           }
         }
       }
@@ -295,12 +295,27 @@ String last_move = "";
 
 
 // SCAN BOARD AND DETECT PIECE CHANGES 
+// std::pair<String, String> get_move() {
+//     scan_grid_detect_pieces();
+//     // Add logic to determine fromSquare and toSquare
+//     // For now, returning empty strings as placeholders
+//     return std::make_pair("", "");
+// }
+
 std::pair<String, String> get_move() {
-    scan_grid_detect_pieces();
-    // Add logic to determine fromSquare and toSquare
-    // For now, returning empty strings as placeholders
-    return std::make_pair("", "");
+  Serial.print("Enter move from (e.g., e2): ");
+  while (Serial.available() == 0) {}
+  String fromSquare = Serial.readStringUntil('\n');
+  fromSquare.trim();
+
+  // Get the "to" square
+  Serial.print("Enter move to (e.g., e4): ");
+  while (Serial.available() == 0) {}
+  String toSquare = Serial.readStringUntil('\n');
+  toSquare.trim();
+  return {fromSquare, toSquare};
 }
+
 
 void play_game()
 {
@@ -320,7 +335,8 @@ void play_game()
             }
             else if (opponentsTurn)
             {
-                delay(1000);
+              Serial.println("Entered opponents turn");
+              delay(1000);
             }
         }
     }
@@ -444,6 +460,11 @@ void get_messages()
         else if (messageType == "game-state")
         {
             myColor = (const char *)parsedResponse["color"];
+            String turn = (const char *)parsedResponse["turn"];
+            if (myColor[0] == turn[0]) {
+              myTurn = true;
+              opponentsTurn = false;
+            }
             fen_to_expected_board((const char *)parsedResponse["fen"]);
             last_move = (const char *)parsedResponse["lastMove"];
             if (last_move != nullptr) update_lcd("Last move was: " + last_move);
@@ -601,7 +622,7 @@ void send_move(String fromSquare, String toSquare)
 
     while (!moveConfirmed)
     {
-        check_connections();
+        check_websocket();
         // Construct move payload
         char movePayload[200];
         snprintf(movePayload, sizeof(movePayload),

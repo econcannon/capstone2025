@@ -447,14 +447,14 @@ export class ChessGame extends DurableObject {
 
         if (aiMove) {
             const result = this.game.move(aiMove);
-            await this.#updateMovesInDB(result.san);
             await this.storage.put("gameState", this.game.fen());
-            await this.storage.put("lastMove", JSON.stringify(move.from + move.to));
+            await this.storage.put("lastMove", JSON.stringify(aiMove.from + aiMove.to));
 
             const aiMovePayload = JSON.stringify(
-                standardGameInfo(this.game, playerID, this.players_color, Array.from(this.players).join(", "), "game-state")
+                standardGameInfo(this.game, playerID, this.players_color, Array.from(this.players).join(", "), "move")
             );
             ws.send(aiMovePayload);
+            await this.#updateMovesInDB(result.san); // Update db after sending move
         } else {
             ws.send(JSON.stringify(createResponse({ message_type: "error", error: "AI move failed" }, 500)));
         }
@@ -637,7 +637,6 @@ async function handlePlayerActions(url_path, url, request, playerID, DB, GAME_RO
             return getFriends(playerID, DB);
         case "see-friend-requests":
             return seeFriendRequests(playerID, DB);
-            return seeFriendRequests(playerID, DB);
         case "send-friend-request":
             return sendFriendRequest(playerID, url, DB);
         case "accept-friend-request":
@@ -708,7 +707,7 @@ async function insertNewGame(playerID, gameID, DB) {
 
         // Update the database
         const updateQuery = `UPDATE users SET active_games = ? WHERE id = ?`;
-        await DB.prepare(updateQuery).bind(toCSV(activeGames), playerID).first();
+        await DB.prepare(updateQuery).bind(toCSV(activeGames), playerID).run();
 
         return createResponse({ success: true, message: "Game added to active games." });
     } catch (error) {
@@ -1019,12 +1018,12 @@ async function challengeFriend(playerID, url, DB) {
     try {
         // Fetch outgoing challenges for the challenger (sender)
         let query = `SELECT outgoing_challenges FROM users WHERE id = ?`;
-        let challenger = await DB.prepare(query).bind(playerID).get();
+        let challenger = await DB.prepare(query).bind(playerID).first();
         let outgoingChallenges = parseCSV(challenger?.outgoing_challenges);
 
         // Fetch incoming challenges for the recipient
         query = `SELECT incoming_challenges FROM users WHERE id = ?`;
-        let recipient = await DB.prepare(query).bind(friendID).get();
+        let recipient = await DB.prepare(query).bind(friendID).first();
         let incomingChallenges = parseCSV(recipient?.incoming_challenges);
 
         // Check if the challenge already exists
@@ -1041,7 +1040,7 @@ async function challengeFriend(playerID, url, DB) {
 
             // Update the sender's outgoing challenges
             query = `UPDATE users SET outgoing_challenges = ? WHERE id = ?`;
-            await DB.prepare(query).bind(toCSV(outgoingChallenges), playerID).first();
+            await DB.prepare(query).bind(toCSV(outgoingChallenges), playerID).run();
         }
 
         if (!incomingChallenges.includes(playerID)) {
@@ -1050,7 +1049,7 @@ async function challengeFriend(playerID, url, DB) {
 
             // Update the recipient's incoming challenges
             query = `UPDATE users SET incoming_challenges = ? WHERE id = ?`;
-            await DB.prepare(query).bind(toCSV(incomingChallenges), friendID).first();
+            await DB.prepare(query).bind(toCSV(incomingChallenges), friendID).run();
         }
 
         if (!updated) {
@@ -1066,7 +1065,7 @@ async function challengeFriend(playerID, url, DB) {
 
 
 // Accept a challenge and create a game
-async function acceptChallenge(playerID, url, GAME_ROOM, DB) {
+async function acceptChallenge(playerID, url, DB, GAME_ROOM) {
     const friendID = url.searchParams.get("friendID");
     if (!playerID || !friendID) {
         return new Response("Missing gameID or playerID", { status: 400 });
@@ -1075,12 +1074,12 @@ async function acceptChallenge(playerID, url, GAME_ROOM, DB) {
     try {
         // Fetch incoming challenges for accepting player
         let query = `SELECT incoming_challenges FROM users WHERE id = ?`;
-        let player = await DB.prepare(query).bind(playerID).get();
+        let player = await DB.prepare(query).bind(playerID).first();
         let incomingChallenges = parseCSV(player?.incoming_challenges);
 
         // Fetch outgoing challenges for challenger
         query = `SELECT outgoing_challenges FROM users WHERE id = ?`;
-        let friend = await DB.prepare(query).bind(friendID).get();
+        let friend = await DB.prepare(query).bind(friendID).first();
         let outgoingChallenges = parseCSV(friend?.outgoing_challenges);
 
         // Ensure both players have the challenge in their respective lists
@@ -1094,10 +1093,10 @@ async function acceptChallenge(playerID, url, GAME_ROOM, DB) {
 
         // Update the database to remove the challenge
         query = `UPDATE users SET incoming_challenges = ? WHERE id = ?`;
-        await DB.prepare(query).bind(toCSV(incomingChallenges), playerID).first();
+        await DB.prepare(query).bind(toCSV(incomingChallenges), playerID).run();
 
         query = `UPDATE users SET outgoing_challenges = ? WHERE id = ?`;
-        await DB.prepare(query).bind(toCSV(outgoingChallenges), friendID).first();
+        await DB.prepare(query).bind(toCSV(outgoingChallenges), friendID).run();
         
         const gameID = (await handleGameCreation(playerID, url, null, GAME_ROOM, DB, 0)).json().gameID;
         if (gameID) {
