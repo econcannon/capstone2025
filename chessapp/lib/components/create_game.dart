@@ -1,13 +1,13 @@
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
-import 'package:chessapp/components/constants.dart';
 import 'package:logger/logger.dart';
 
+import 'package:chessapp/components/constants.dart';
 var logger = Logger();
 
 mixin CreateGame {
-  
-  Future<bool> createGame(Uri endpoint) async {
+  Future<String?> createGame(Uri endpoint) async {
     try {
       logger.i(TOKEN);
       logger.i(HEADERS);
@@ -18,14 +18,14 @@ mixin CreateGame {
         String gameId = data['gameID'];
         logger.i("New game created with ID: $gameId");
         GAMEID = gameId;
-        return true;
+        return gameId;
       } else {
         logger.e("Failed to create game. Status code: ${response.statusCode}");
-        return false;
+        return null;
       }
     } catch (e) {
       logger.e("Error creating game: $e");
-      return false;
+      return null;
     }
   }
 }

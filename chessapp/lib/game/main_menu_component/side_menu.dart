@@ -1,8 +1,15 @@
-import 'package:chessapp/game/get_data/friends.dart';
+// Flutter package imports
 import 'package:flutter/material.dart';
+
+// Third-party package imports
+import 'package:google_fonts/google_fonts.dart';
 import 'package:hexcolor/hexcolor.dart';
-import '../../components/constants.dart';
+
+// Project imports
+import 'package:chessapp/components/constants.dart';
+import 'package:chessapp/game/get_data/friends.dart';
 import 'package:chessapp/components/popup_menu.dart';
+import 'package:chessapp/game/main_menu_component/player_stats.dart';
 
 class SideMenu extends StatefulWidget {
   const SideMenu({super.key});
@@ -36,21 +43,65 @@ class _SideMenuState extends State<SideMenu> with FriendsHandler {
     });
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Drawer(
       child: Column(
         children: [
           UserAccountsDrawerHeader(
-            accountName: Text(PLAYERID, style: const TextStyle(fontSize: 18)),
+            accountName: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    PLAYERID,
+                    style: GoogleFonts.dmSans(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const PlayerStatsScreen(),
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8.0, vertical: 4.0),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Stats',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_forward_ios,
+                            color: Colors.white, size: 16),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
             accountEmail: const Text(""),
             currentAccountPicture: CircleAvatar(
               backgroundColor: Colors.white,
               child: Text(
                 PLAYERID[0],
-                style:
-                    const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                style: GoogleFonts.dmSans(
+                  fontSize: 35,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black,
+                ),
               ),
             ),
           ),
@@ -61,8 +112,11 @@ class _SideMenuState extends State<SideMenu> with FriendsHandler {
               children: [
                 Text(
                   _title,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold),
+                  style: GoogleFonts.dmSans(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black,
+                  ),
                 ),
                 _buildFriendsOptionsMenu(),
               ],
@@ -70,7 +124,8 @@ class _SideMenuState extends State<SideMenu> with FriendsHandler {
           ),
           Expanded(
             child: FutureBuilder<List<String>>(
-              future: _showingRequests ? _incomingRequests : _currentFriendsList,
+              future:
+                  _showingRequests ? _incomingRequests : _currentFriendsList,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
@@ -91,7 +146,11 @@ class _SideMenuState extends State<SideMenu> with FriendsHandler {
                         backgroundColor: HexColor("#44564A"),
                         child: Text(
                           user[0],
-                          style: const TextStyle(color: Colors.white),
+                          style: GoogleFonts.dmSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                       title: Text(user),
@@ -179,30 +238,30 @@ class _SideMenuState extends State<SideMenu> with FriendsHandler {
   }
 
   Widget _buildFriendActions(String friend) {
-  return Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      IconButton(
-        icon: const Icon(Icons.sports_esports, color: Colors.green),
-        onPressed: () {
-          challengeFriend(friend);
-        },
-      ),
-      IconButton(
-        icon: const Icon(Icons.check, color: Colors.blue),
-        onPressed: () {
-          acceptChallenge(friend);
-        },
-      ),
-      IconButton(
-        icon: const Icon(Icons.delete, color: Colors.red),
-        onPressed: () {
-          //removeFriend(friend);
-        },
-      ),
-    ],
-  );
-}
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.sports_esports, color: Colors.green),
+          onPressed: () {
+            challengeFriend(friend);
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.check, color: Colors.blue),
+          onPressed: () {
+            acceptChallenge(friend);
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.delete, color: Colors.red),
+          onPressed: () {
+            //removeFriend(friend);
+          },
+        ),
+      ],
+    );
+  }
 
   /// Actions for friend requests (Accept or Decline)
   Widget _buildFriendRequestActions(String friendId) {

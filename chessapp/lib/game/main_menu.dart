@@ -11,11 +11,11 @@ import 'package:chessapp/components/constants.dart';
 import 'package:chessapp/components/menu_button.dart';
 import 'package:chessapp/components/popup_menu.dart';
 import 'package:chessapp/game/main_menu_component/game_list.dart';
-import 'package:chessapp/game/main_menu_component/player_stats.dart';
+//import 'package:chessapp/game/main_menu_component/player_stats.dart';
 import 'package:chessapp/game/main_menu_component/side_menu.dart';
 import 'package:chessapp/game/challenge/choose_opponent.dart';
 import 'package:chessapp/game/chess.dart';
-import 'package:chessapp/old_challenge_friends.dart';
+//import 'package:chessapp/old_challenge_friends.dart';
 
 var logger = Logger();
 
@@ -150,28 +150,28 @@ class _MainMenu extends State<MainMenu> {
                 );
               },
             ),
-            BuildMenuButton(
-              label: 'Friends',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const FriendsPage(),
-                  ),
-                );
-              },
-            ),
-            BuildMenuButton(
-              label: 'Testing Stats Page',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const PlayerStatsScreen(),
-                  ),
-                );
-              },
-            ),
+            // BuildMenuButton(
+            //   label: 'Friends',
+            //   onPressed: () {
+            //     Navigator.push(
+            //       context,
+            //       MaterialPageRoute(
+            //         builder: (context) => const FriendsPage(),
+            //       ),
+            //     );
+            //   },
+            // ),
+            // BuildMenuButton(
+            //   label: 'Testing Stats Page',
+            //   onPressed: () {
+            //     Navigator.push(
+            //       context,
+            //       MaterialPageRoute(
+            //         builder: (context) => const PlayerStatsScreen(),
+            //       ),
+            //     );
+            //   },
+            // ),
             BuildMenuButton(
               label: 'Log out',
               onPressed: () {

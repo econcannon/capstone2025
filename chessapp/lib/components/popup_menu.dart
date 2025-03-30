@@ -1,4 +1,7 @@
+// Flutter package imports
 import 'package:flutter/material.dart';
+
+// Third-party package imports
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hexcolor/hexcolor.dart';
 
