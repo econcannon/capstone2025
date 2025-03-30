@@ -88,7 +88,7 @@ export class ChessGame extends DurableObject {
 
         this.game = storedState ? new Chess(storedState) : new Chess();
         this.players_color = storedPlayersColor || { white: null, black: null };
-        this.players = storedPlayers || new Set();
+        this.players = new Set(storedPlayers || []);
         this.ai = storedAi || false;
         this.depth = storedDepth || 10;
         this.gameID = storedGameID || null;
@@ -126,11 +126,12 @@ export class ChessGame extends DurableObject {
     async handleJoinGame(playerID, ai, depth = 10) {
         if (!playerID) return createResponse({message_type: "error", error: "Player ID required" }, 400);
         
-        try {
-            if (this.players.length >= 2) {
-                return createResponse({message_type: "error", error: "Game is full. Cannot join." }, 403);
-            }
+        // try {
+            console.log("Current players: ", JSON.stringify(Array.from(this.players)));
             if (!this.players.has(playerID)) {
+                if (this.players.length >= 2) {
+                    return createResponse({message_type: "error", error: "Game is full. Cannot join." }, 403);
+                }
                 this.players.add(playerID);
                 if (ai && this.players.size === 1) {
                     console.log("Entered here: " + ai.toString());
@@ -141,9 +142,12 @@ export class ChessGame extends DurableObject {
                     this.ai = true;
                 }
                 else {
+                    this.players_color.white = playerID;
+                    await this.storage.put("players_color", this.players_color);
                     await this.storage.put("ai", false);
                 }
-                await this.storage.put("players", this.players);
+                await this.storage.put("players", Array.from(this.players));
+
                 console.log("Entered players: " + Array.from(this.players).toString());
             }
             else {
@@ -160,9 +164,10 @@ export class ChessGame extends DurableObject {
             }
             else
                 return createResponse(standardGameInfo(this.game, playerID, this.players_color, Array.from(this.players).join(", ")));
-        } catch (error) {
-            return createResponse({message_type: "error", error: "Error updating durable object storage." }, 500);
-        }
+        // } catch (error) {
+            // console.log("Error happened: ", error);
+            // return createResponse({message_type: "error", error: "Error updating durable object storage." }, 500);
+        // }
 
     }
 
@@ -330,10 +335,10 @@ export class ChessGame extends DurableObject {
         const url = new URL(request.url);
         const playerID = url.searchParams.get("playerID");
 
-        const joinGameResponse = this.handleJoinGame(playerID, this.ai, this.depth);
-        if (joinGameResponse.message_type === "error") {
-            return joinGameResponse
-        }
+        // const joinGameResponse = this.handleJoinGame(playerID, this.ai, this.depth);
+        // if (joinGameResponse.message_type === "error") {
+        //     return joinGameResponse
+        // }
 
         const [clientSocket, serverSocket] = new WebSocketPair();
         this.ctx.acceptWebSocket(serverSocket);
@@ -485,13 +490,13 @@ export class ChessGame extends DurableObject {
 
     // Function to send the payload to the opposing WebSocket
     async sendToOpponent(senderSocket, payload) {
-        const opponentSocket = this.ctx.getWebSockets().find((ws) => ws !== senderSocket);
-
-        if (opponentSocket) {
-            opponentSocket.send(payload);
-        } else {
-            console.log(`No opponent connected to receive message.`);
-        }
+        const allSockets = this.ctx.getWebSockets();
+    
+        allSockets.forEach((ws) => {
+            if (ws !== senderSocket && ws.readyState === ws.OPEN) {
+                ws.send(payload);
+            }
+        });
     }
 
 
