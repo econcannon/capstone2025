@@ -71,7 +71,7 @@ export class ChessGame extends DurableObject {
         this.gameID = null;
         this.depth = 10;
         this.ai = false;
-        this.lastMove = null;
+        this.lastMove = "";
         this.initializeGameState();
     }
 
@@ -149,6 +149,7 @@ export class ChessGame extends DurableObject {
                 await this.storage.put("players", Array.from(this.players));
 
                 console.log("Entered players: " + Array.from(this.players).toString());
+                return createResponse({gameID: this.gameID});
             }
             else {
                 return createResponse({message_type: "error", error: "You are already in this game!" }, 403);
@@ -650,6 +651,8 @@ async function handlePlayerActions(url_path, url, request, playerID, DB, GAME_RO
             return challengeFriend(playerID, url, DB);
         case "accept-challenge":
             return acceptChallenge(playerID, url, DB, GAME_ROOM);
+        case "see-challenge-requests":
+            return seeChallengeRequests(playerID, DB);
         case "game":
             return getGameData(playerID, url, request, DB);
         case "stats":
@@ -675,14 +678,15 @@ async function loginPlayer(playerID, url, DB) {
 
 
 async function joinGame(playerID, url, request, GAME_ROOM, DB, origin = 1, gameID = null) {
-    if (!verifyToken(request) && origin) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
+    if (origin && !verifyToken(request)) return createResponse({message_type: "error", error: "Authentication Failed" }, 403);
 
-    if (!origin) gameID = url.searchParams.get("gameID");
+    if (origin) gameID = url.searchParams.get("gameID");
 
     const gameRoom = GAME_ROOM.get(GAME_ROOM.idFromName(gameID));
     const response = await gameRoom.fetch(
         new URL("/join-game?playerID=" + playerID + "&ai=false", url.origin)
     );
+    console.log("Response" , JSON.stringify(response));
 
     if (response.ok) {
         const clonedResponse = response.clone(); // Clone before consuming
@@ -926,6 +930,21 @@ async function seeFriendRequests(playerID, DB) {
     }
 }
 
+// Retrieve both incoming and outgoing friend requests
+async function seeChallengeRequests(playerID, DB) {
+    const query = `SELECT incoming_challenges, outgoing_challenges FROM users WHERE id = ?`;
+    try {
+        const result = await DB.prepare(query).bind(playerID).first();
+        return createResponse({
+            incoming_challenges: parseCSV(result?.incoming_challenges),
+            outgoing_challenges: parseCSV(result?.outgoing_challenges)
+        });
+    } catch (error) {
+        console.error("Error retrieving friend requests:", error);
+        return createResponse({ error: "Failed to retrieve friend requests" }, 500);
+    }
+}
+
 // Send a friend request
 async function sendFriendRequest(playerID, url, DB) {
     const friendID = url.searchParams.get("friendID");
@@ -1103,11 +1122,15 @@ async function acceptChallenge(playerID, url, DB, GAME_ROOM) {
         query = `UPDATE users SET outgoing_challenges = ? WHERE id = ?`;
         await DB.prepare(query).bind(toCSV(outgoingChallenges), friendID).run();
         
-        const gameID = (await handleGameCreation(playerID, url, null, GAME_ROOM, DB, 0)).json().gameID;
+        const response = await handleGameCreation(playerID, url, null, GAME_ROOM, DB, 0);
+        const json = await response.json();
+        console.log("json", JSON.stringify(json));
+        const gameID = json.gameID;
+        
         if (gameID) {
-            joinGame(playerID, url, null, GAME_ROOM, DB, 0, gameID);
-            joinGame(friend, url, null, GAME_ROOM, DB, 0, gameID);
-            return createResponse({ success: true, message: "Game joined!", gameID: result.lastInsertRowid });
+            // await joinGame(playerID, url, null, GAME_ROOM, DB, 0, gameID);
+            await joinGame(friendID, url, null, GAME_ROOM, DB, 0, gameID);
+            return createResponse({ success: true, message: "Game joined!", gameID: gameID });
         }
         else return createResponse({ message_type: "error", error: "Failed to create game."}, 500);
     } catch (error) {
