@@ -1,0 +1,227 @@
+//2/5/25 Fuentes group 3 Jeremy Gagnon
+
+#include <LiquidCrystal.h>
+
+const int rowOne = 22;
+const int rowTwo = 24;
+const int rowThree = 26;
+const int rowFour = 28;
+const int rowFive = 30;
+const int rowSix = 33;
+const int rowSeven = 34;
+const int rowEight = 36;
+
+const int rs = 6, en = 9, d4 = 2, d5 = 3, d6 = 4, d7 = 5;
+
+
+#define colEight A11
+#define colSeven A10
+#define colSix A9
+#define colFive A8
+#define colFour A7
+#define colThree A6
+#define colTwo A5
+#define colOne A4
+
+const int lowerThresh = 650;
+const int upperThresh = 970; 
+
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+
+
+void setup() {
+
+    pinMode(rowEight, OUTPUT);
+    pinMode(rowOne, OUTPUT);
+    pinMode(rowTwo, OUTPUT);
+    pinMode(rowThree, OUTPUT);
+    pinMode(rowFour, OUTPUT);
+    pinMode(rowFive, OUTPUT);
+    pinMode(rowSix, OUTPUT);
+    pinMode(rowSeven, OUTPUT);
+    
+    Serial.begin(9600);  // Start serial communication for debugging
+    lcd.begin(16, 2);
+    lcd.print("Initialized");
+    Serial.println("Initialized");
+    Serial1.begin(9600);
+    
+}
+
+void setVoltage(int value) {
+  // Set all rows LOW *first*
+  digitalWrite(rowOne, LOW);
+  digitalWrite(rowTwo, LOW);
+  digitalWrite(rowThree, LOW);
+  digitalWrite(rowFour, LOW);
+  digitalWrite(rowFive, LOW);
+  digitalWrite(rowSix, LOW);
+  digitalWrite(rowSeven, LOW);
+  digitalWrite(rowEight, LOW);
+
+  // THEN raise the selected row
+  switch (value) {
+    case 1: digitalWrite(rowOne, HIGH); break;
+    case 2: digitalWrite(rowTwo, HIGH); break;
+    case 3: digitalWrite(rowThree, HIGH); break;
+    case 4: digitalWrite(rowFour, HIGH); break;
+    case 5: digitalWrite(rowFive, HIGH); break;
+    case 6: digitalWrite(rowSix, HIGH); break;
+    case 7: digitalWrite(rowSeven, HIGH); break;
+    case 8: digitalWrite(rowEight, HIGH); break;
+  }
+
+  delay(50);  // Let the new row settle after switching
+}
+
+float readCol(int value) {
+    //Serial.println("Reading:");
+    float val = -1;  // Default value in case of error
+    delay(200);
+    //analogRead(A8);
+    
+    switch (value) {
+        case 1: val = analogRead(colOne); break;
+        case 2: val = analogRead(colTwo); break;
+        case 3: val = analogRead(colThree); break;
+        case 4: val = analogRead(colFour); break;
+        case 5: val = analogRead(colFive); break;
+        case 6: val = analogRead(colSix); break;
+        case 7: val = analogRead(colSeven); break;
+        case 8: val = analogRead(colEight); break;
+    }
+    delay(10);
+    return val;
+}
+
+void scanGrid() {
+    float sensorValue;
+    for (int i = 8; i > 0; i--) {  // Start from row 7 down to 0
+        setVoltage(i);
+        delay(5);  // Allow time for stabilization
+        
+        for (int j = 1; j < 9; j++) {
+            sensorValue = readCol(j);  // Read sensor value
+            //Serial.print(sensorValue);
+            if (sensorValue >= upperThresh){
+                Serial.print("B");
+            }
+            else if (sensorValue <= lowerThresh){
+                Serial.print("W");
+            }
+            else {
+                Serial.print("*");
+            }
+          
+            
+            Serial.print("\t");  // Use tab spacing for readability
+        }
+        Serial.println();  // New line after each row
+    }
+    Serial.println("----------------------");  // Separate scans visually
+}
+
+
+void hall_serial_convert(int i){
+  switch(i){
+      //Serial.println("Function");
+      case 1: Serial1.print("A"); break;
+      case 2: Serial1.print("B"); break;
+      case 3: Serial1.print("C"); break;
+      case 4: Serial1.print("D"); break;
+      case 5: Serial1.print("E"); break;
+      case 6: Serial1.print("F"); break;
+      case 7: Serial1.print("G"); break;
+      case 8: Serial1.print("H"); break;
+  }
+} 
+
+void hall_to_LED(int row, int col, int R, int G, int B){
+    Serial1.print("SET_LED ");
+    hall_serial_convert(col);
+    Serial1.print(row);
+    Serial1.print(" ");
+    Serial1.print(R);
+    Serial1.print(" ");
+    Serial1.print(G);
+    Serial1.print(" ");
+    Serial1.println(B);
+}
+
+void mainLoop() {
+    float sensorValue;
+    //Serial.println("LOOP START");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Scanning");
+
+    for (int i = 1; i < 9; i++) {
+        
+        setVoltage(i);
+        //Serial.print("Setting row: ");
+        //Serial.println(i);
+        delay(50);
+        //delay(200);
+        Serial.print("Reading row ");
+        Serial.print(i); 
+        Serial.println(" ");
+        for (int j = 1; j < 9; j++) {           
+            
+            
+            //Serial.print(" j: ");
+            //Serial.println(j);
+            //delay(800);
+            sensorValue = readCol(j);  // Read sensor
+            //Serial.println(sensorValue);
+           
+            if (sensorValue > upperThresh) {
+                Serial.print("Black piece detected at: (");
+                Serial.print(i);
+                Serial.print(", ");
+                Serial.print(j);
+                Serial.print(")");
+                Serial.print(" Val: ");
+                Serial.println(sensorValue);
+
+                lcd.clear();
+                lcd.setCursor(0, 0);
+                lcd.print("Black @ ");
+                lcd.setCursor(5, 1);
+                lcd.print(i);
+                lcd.setCursor(6, 1);
+                lcd.print(",");
+                lcd.setCursor(7, 1);
+                lcd.print(j);
+
+                hall_to_LED(i, j, 255, 0, 0);
+            }
+            else if (sensorValue < lowerThresh & sensorValue >= 100) {
+                Serial.print("White piece detected at: (");
+                Serial.print(i);
+                Serial.print(", ");
+                Serial.print(j);
+                Serial.print(")");
+                Serial.print(" Val: ");
+                Serial.println(sensorValue);
+
+                hall_to_LED(i, j, 0, 0, 255);
+            }
+
+            else {
+                Serial.println(sensorValue);
+            }
+            
+            
+            //Serial.println("step done");
+        }
+        //Serial.println("for loop done");
+    }
+
+    //delay(10);  // Small delay for stability
+}
+
+void loop(){
+  scanGrid();
+  delay(500);
+  //mainLoop();
+}
