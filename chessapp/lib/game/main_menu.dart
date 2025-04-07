@@ -1,10 +1,13 @@
 // Flutter package imports
+import 'package:chessapp/components/create_game.dart';
 import 'package:flutter/material.dart';
 
 // Third-party package imports
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hexcolor/hexcolor.dart';
 import 'package:logger/logger.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 // Project imports
 import 'package:chessapp/components/constants.dart';
@@ -37,14 +40,8 @@ class _MainMenu extends State<MainMenu> {
     return Scaffold(
       endDrawer: const SideMenu(),
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         backgroundColor: HexColor("#D0B38B"),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          color: Colors.black,
-          onPressed: () {
-            Navigator.of(context).popUntil((route) => route.isFirst);
-          },
-        ),
         title: Text(
           "Chess Link",
           style: GoogleFonts.dmSans(
@@ -109,10 +106,44 @@ class _MainMenu extends State<MainMenu> {
                 ),
               ),
             ),
+            // BuildMenuButton(
+            //   label: 'Join Game by ID',
+            //   onPressed: () async {
+            //     showDialog<String>(
+            //       context: context,
+            //       builder: (context) => InputDialog(
+            //         title: "Enter Game ID",
+            //         hintText: "Game ID",
+            //         buttonText: "Join",
+            //         onConfirm: (gameId) {
+            //           Navigator.of(context).pop(gameId);
+            //         },
+            //       ),
+            //     ).then((gameId) {
+            //       final endpoint = Uri.parse(
+            //           '$BASE_URL/create?playerID=$PLAYERID&ai=false&depth=1');
+
+            //       final gameId = await JoinGame(endpoint);
+            //       if (gameId) {
+            //         logger.i("Game created successfully");
+            //         if (mounted) {
+            //           Navigator.pop(context);
+            //           Navigator.push(
+            //             context,
+            //             MaterialPageRoute(
+            //                 builder: (context) => GamePage(gameId: GAMEID)),
+            //           );
+            //         }
+            //       } else {
+            //         logger.e("Failed to create game");
+            //       }
+            //     });
+            //   },
+            // ),
             BuildMenuButton(
               label: 'Join Game by ID',
-              onPressed: () {
-                showDialog<String>(
+              onPressed: () async {
+                final gameId = await showDialog<String>(
                   context: context,
                   builder: (context) => InputDialog(
                     title: "Enter Game ID",
@@ -122,17 +153,63 @@ class _MainMenu extends State<MainMenu> {
                       Navigator.of(context).pop(gameId);
                     },
                   ),
-                ).then((gameId) {
-                  if (gameId != null && gameId.isNotEmpty) {
-                    GAMEID = gameId;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => GamePage(gameId: GAMEID),
+                );
+
+                if (gameId != null && gameId.isNotEmpty) {
+                  GAMEID = gameId;
+                  final endpoint =
+                      "$BASE_URL/player/join-game?playerID=$PLAYERID&gameID=$GAMEID&ai=false&depth=1";
+
+                  try {
+                    final response =
+                        await http.get(Uri.parse(endpoint), headers: HEADERS);
+                    logger.i(HEADERS);
+
+                    if (response.statusCode == 200) {
+                      final data = json.decode(response.body);
+                      logger.i("Game joined successfully: $data");
+
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => GamePage(gameId: GAMEID),
+                        ),
+                      );
+                    } else {
+                      logger.e(
+                          "Failed to join game. Status Code: ${response.statusCode}");
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text("Error"),
+                          content:
+                              Text("Failed to join game: ${response.body}"),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              child: const Text("OK"),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    logger.e("Error joining game: $e");
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text("Error"),
+                        content: Text("An error occurred: $e"),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text("OK"),
+                          ),
+                        ],
                       ),
                     );
                   }
-                });
+                }
               },
             ),
             // BuildMenuButton(

@@ -1,7 +1,7 @@
 // Dart SDK imports
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' as io; 
+import 'dart:io' as io;
 
 // Flutter package imports
 import 'package:flutter/material.dart';
@@ -16,7 +16,6 @@ import 'package:hexcolor/hexcolor.dart';
 
 // Project imports
 import '../components/constants.dart';
-import 'package:chessapp/components/button.dart';
 import 'package:chessapp/game/main_menu.dart';
 import 'package:chessapp/components/create_game.dart';
 
@@ -39,6 +38,9 @@ class _GamePage extends State<GamePage> with CreateGame {
   bool flipBoard = false;
   bool isWebSocketConnected = false;
   String? playerColor;
+  String? playerEmoji;
+  String? opponentEmoji;
+  Timer? emojiTimer;
 
   @override
   void initState() {
@@ -112,6 +114,16 @@ class _GamePage extends State<GamePage> with CreateGame {
           String fen = decodedMessage["fen"];
           logger.i("Move confirmed: $fen");
           _updateGameState(fen);
+        } else if (decodedMessage["message_type"] == "player_message") {
+          final emoji = decodedMessage["emoji"];
+          final sender = decodedMessage["playerID"];
+
+          logger.i("Emoji received from $sender: $emoji");
+
+          setState(() {
+            opponentEmoji = emoji;
+          });
+          _startEmojiTimer(isPlayer: false);
         } else if (decodedMessage["message_type"] == "error") {
           logger.e("Illegal move: ${decodedMessage["error"]}");
         }
@@ -164,6 +176,51 @@ class _GamePage extends State<GamePage> with CreateGame {
     }
   }
 
+  void sendEmoji(String emojiName) {
+    final message = jsonEncode({
+      "message_type": "player-message",
+      "playerID": PLAYERID,
+      "emoji": emojiName, // should be "smiley", "sad", or "angry"
+    });
+
+    try {
+      webSocket.add(message);
+      logger.i("Emoji sent: $emojiName");
+    } catch (e) {
+      logger.e("Error sending emoji: $e");
+    }
+    setState(() {
+      playerEmoji = emojiName;
+    });
+    _startEmojiTimer(isPlayer: true);
+  }
+
+  String getEmojiVisual(String emojiName) {
+    switch (emojiName) {
+      case 'smiley':
+        return '😁';
+      case 'sad':
+        return '😢';
+      case 'angry':
+        return '😡';
+      default:
+        return '❓';
+    }
+  }
+
+  void _startEmojiTimer({required bool isPlayer}) {
+    emojiTimer?.cancel();
+    emojiTimer = Timer(const Duration(seconds: 5), () {
+      setState(() {
+        if (isPlayer) {
+          playerEmoji = null;
+        } else {
+          opponentEmoji = null;
+        }
+      });
+    });
+  }
+
   void _resetGame([bool ss = true]) async {
     game = bishop.Game(variant: bishop.Variant.standard());
     state = game.squaresState(player);
@@ -171,6 +228,100 @@ class _GamePage extends State<GamePage> with CreateGame {
   }
 
   void _flipBoard() => setState(() => flipBoard = !flipBoard);
+
+  Widget _buildProfile(String name, {required bool isTop}) {
+    final emojiName = isTop ? opponentEmoji : playerEmoji;
+    final showEmoji = emojiName != null;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: HexColor("#44564A"),
+                child: Text(
+                  name[0].toUpperCase(),
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+              if (showEmoji) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    getEmojiVisual(emojiName!),
+                    style: const TextStyle(fontSize: 20),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          Text(
+            name,
+            style: GoogleFonts.dmSans(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (!isTop)
+            IconButton(
+              icon: const Icon(Icons.emoji_emotions_outlined),
+              onPressed: _showEmojiPicker,
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showEmojiPicker() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SizedBox(
+          height: 150,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _emojiOption("smiley"),
+              _emojiOption("sad"),
+              _emojiOption("angry"),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _emojiOption(String emojiName) {
+    return GestureDetector(
+      onTap: () {
+        sendEmoji(emojiName);
+        Navigator.pop(context);
+      },
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            getEmojiVisual(emojiName),
+            style: const TextStyle(fontSize: 36),
+          ),
+          const SizedBox(height: 4),
+          Text(emojiName),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -199,10 +350,12 @@ class _GamePage extends State<GamePage> with CreateGame {
         ),
         centerTitle: true,
       ),
-      body: Center(
+      body: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 30.0),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
+            _buildProfile("Opponent", isTop: true),
             Text(
               'Game ID: $GAMEID',
               style: GoogleFonts.dmSans(
@@ -211,46 +364,26 @@ class _GamePage extends State<GamePage> with CreateGame {
                 color: Colors.black,
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(4.0),
-              child: BoardController(
-                state: flipBoard ? state.board.flipped() : state.board,
-                playState: state.state,
-                pieceSet: PieceSet.merida(),
-                theme: BoardTheme.brown,
-                moves: state.moves,
-                onMove: _onMove,
-                onPremove: _onMove,
-                markerTheme: MarkerTheme(
-                  empty: MarkerTheme.dot,
-                  piece: MarkerTheme.corners(),
+            Center(
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: BoardController(
+                  state: flipBoard ? state.board.flipped() : state.board,
+                  playState: state.state,
+                  pieceSet: PieceSet.merida(),
+                  theme: BoardTheme.brown,
+                  moves: state.moves,
+                  onMove: _onMove,
+                  onPremove: _onMove,
+                  markerTheme: MarkerTheme(
+                    empty: MarkerTheme.dot,
+                    piece: MarkerTheme.corners(),
+                  ),
+                  promotionBehaviour: PromotionBehaviour.autoPremove,
                 ),
-                promotionBehaviour: PromotionBehaviour.autoPremove,
               ),
             ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: MyButton(
-                onPressed: () async {
-                  setState(() {});
-                  final endpoint = Uri.parse(
-                      '$BASE_URL/create?playerID=$PLAYERID&ai=false&depth=1');
-
-                  final gameId = await createGame(endpoint);
-                  if (gameId != null) {
-                    logger.i("Game created successfully");
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => GamePage(gameId: GAMEID)),
-                    );
-                  } else {
-                    logger.e("Failed to create game");
-                  }
-                },
-                buttonText: 'New Game',
-              ),
-            ),
+            _buildProfile(PLAYERID, isTop: false),
             IconButton(
               onPressed: _flipBoard,
               icon: const Icon(Icons.rotate_left),

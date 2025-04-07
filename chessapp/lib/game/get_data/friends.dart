@@ -14,6 +14,8 @@ mixin FriendsHandler {
   List<String> friends = [];
   List<String> incomingRequests = [];
   List<String> outgoingRequests = [];
+  List<String> incomingChallenges = [];
+  List<String> outgoingChallenges = [];
   bool _isFetching = false;
 
   Future<List<String>> fetchFriends() async {
@@ -74,6 +76,26 @@ mixin FriendsHandler {
   //     print("Error removing friend: $e");
   //   }
   // }
+
+  Future<void> fetchChallenges() async {
+    try {
+      final endpoint =
+          "$BASE_URL/player/see-challenge-requests?playerID=$PLAYERID";
+      final response = await http.get(Uri.parse(endpoint), headers: HEADERS);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        // logger.i("response body:");
+        // logger.i(response.body);
+        incomingChallenges = List<String>.from(data['incoming_challenges']);
+        outgoingChallenges = List<String>.from(data['outgoing_challenges']);
+      } else {
+        logger.e("Failed to fetch friend requests.");
+      }
+    } catch (e) {
+      logger.e("Error fetching friend requests: $e");
+    }
+  }
 
   // Challenge a friend
 

@@ -22,6 +22,8 @@ class _SideMenuState extends State<SideMenu> with FriendsHandler {
   Future<List<String>>? _currentFriendsList;
   Future<List<String>>? _incomingRequests;
   Future<List<String>>? _outgoingRequests;
+  Future<List<String>>? _incomingChallenges;
+  Future<List<String>>? _outgoingChallenges;
   String _title = "Friends List";
   bool _showingRequests = false;
 
@@ -38,6 +40,12 @@ class _SideMenuState extends State<SideMenu> with FriendsHandler {
         setState(() {
           _incomingRequests = Future.value(incomingRequests);
           _outgoingRequests = Future.value(outgoingRequests);
+        });
+      });
+      fetchChallenges().then((_) {
+        setState(() {
+          _incomingChallenges = Future.value(incomingChallenges);
+          _outgoingChallenges = Future.value(outgoingChallenges);
         });
       });
     });

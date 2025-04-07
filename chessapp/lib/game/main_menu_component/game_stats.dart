@@ -24,18 +24,18 @@ class _GameStatsScreenState extends State<GameStatsScreen> with StatsHandler {
     fetchAndSetGames();
   }
 
-  Future<void> fetchAndSetGames() async {
-    final data = await fetchGames();
-    if (data != null) {
-      setState(() {
-        games = data;
-        isLoading = false;
-      });
-    } else {
-      setState(() => isLoading = false);
-    }
-    printGamesList();
+Future<void> fetchAndSetGames() async {
+  final data = await fetchGames();
+  if (data != null && data["games"] != null) {
+    setState(() {
+      games = List<Map<String, dynamic>>.from(data["games"]);
+      isLoading = false;
+    });
+  } else {
+    setState(() => isLoading = false);
   }
+  printGamesList();
+}
 
   void printGamesList() {
     if (games.isEmpty) {

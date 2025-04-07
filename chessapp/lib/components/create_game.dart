@@ -29,3 +29,27 @@ mixin CreateGame {
     }
   }
 }
+
+mixin JoinGame {
+  Future<String?> joinGame(Uri endpoint) async {
+    try {
+      logger.i(TOKEN);
+      logger.i(HEADERS);
+
+      final response = await http.post(endpoint, headers: HEADERS);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        String gameId = data['gameID'];
+        logger.i("Join with ID: $gameId");
+        GAMEID = gameId;
+        return gameId;
+      } else {
+        logger.e("Failed to join. Status code: ${response.statusCode}");
+        return null;
+      }
+    } catch (e) {
+      logger.e("Error creating game: $e");
+      return null;
+    }
+  }
+}

@@ -16,6 +16,7 @@ import '../chess.dart';
 import 'package:chessapp/game/connection/bluetooth.dart';
 import 'package:chessapp/game/connection/wifi.dart';
 import 'package:chessapp/game/main_menu.dart';
+
 var logger = Logger();
 
 class ViewOngoingGame extends StatefulWidget {
@@ -56,10 +57,10 @@ class _ViewOngoingGameState extends State<ViewOngoingGame>
           });
         }
       } else {
-        print("Failed to fetch games.");
+        logger.e("Failed to fetch games.");
       }
     } catch (e) {
-      print("Error fetching games: $e");
+      logger.e("Error fetching games: $e");
     }
   }
 
@@ -70,15 +71,15 @@ class _ViewOngoingGameState extends State<ViewOngoingGame>
       final response = await http.post(Uri.parse(endpoint), headers: HEADERS);
 
       if (response.statusCode == 200) {
-        print("Game deleted successfully.");
+        logger.i("Game deleted successfully.");
 
         setState(() {
           games.removeWhere((game) => game['gameID'] == gameID);
         });
       } else {
-        print("Failed to delete game.");
-        print(response.statusCode);
-        print(response.body);
+        logger.e("Failed to delete game.");
+        logger.e(response.statusCode);
+        logger.e(response.body);
       }
     } catch (e) {
       print("Error deleting game: $e");

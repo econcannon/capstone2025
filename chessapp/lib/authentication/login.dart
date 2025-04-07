@@ -16,6 +16,7 @@ import 'package:chessapp/components/button.dart';
 import 'package:chessapp/components/constants.dart';
 import 'package:chessapp/game/main_menu.dart';
 import '../components/textfield.dart';
+import 'package:chessapp/game/challenge/accept_challenge.dart';
 
 var logger = Logger();
 
@@ -57,7 +58,8 @@ class _LogInPage extends State<LogInPage> {
         updateHeaders(token);
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) =>  const MainMenu()),
+         // MaterialPageRoute(builder: (context) =>  const MainMenu()),
+         MaterialPageRoute(builder: (context) => ChallengeListener(child: const MainMenu())),
         );
       } else {
         logger.e("Invalid username or password.");
@@ -116,7 +118,7 @@ class _LogInPage extends State<LogInPage> {
         ),
         centerTitle: true,
       ),
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       backgroundColor: HexColor("#D0B38B"),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(0, 377, 0, 0),
